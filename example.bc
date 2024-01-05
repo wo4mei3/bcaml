@@ -1,0 +1,122 @@
+let a =
+  let x = 5 in x + (- 3)
+
+let () = printf "%d %s\n" 5 "bears"
+
+type 'a option =
+| Some of 'a
+| None
+
+let apply f = function
+| Some x -> Some(f x)
+| None -> None
+
+
+type ('a,'b) x = 
+| X of  ('a,'b) x ref
+| Y of int
+
+
+type y = {data:y ref}
+
+type a = b and b = int
+
+type 'a obj = {data:'a}
+
+type 'a a =
+| X of int * int
+
+let rec length n = function
+| [] -> n
+| _::rest -> length (n+1) rest
+
+let curr_id = ref 0
+
+let gen_id () =
+  let ret = !curr_id in
+  curr_id := !curr_id + 1;
+  ret
+
+
+let is_same = fun x y -> x = y
+
+let b = 
+  let x = [] in 3::x
+
+let _ = (fun x y-> x) 7 0
+
+let _ =
+(function 
+| [] -> true) []
+
+let _ = [2] @ [5]
+
+let _ =
+(function
+| Some a when a = 5 -> true
+| None -> failwith "None") (Some 5)
+
+let _ =
+  let id = ref 0 in
+  id := !id + 1;
+  !id
+
+type x = {data:int}
+
+let x = {data=5} == {data=5}
+
+let _ = Some 5
+
+let c =
+  let e = None in e
+
+let a = gen_id()
+let a = gen_id()
+let a = gen_id()
+
+let _ = !curr_id
+
+type 'a tree =
+| Node of 'a tree ref * 'a tree ref
+| Leaf of 'a
+
+let _ = Node(ref (Leaf 3), ref (Leaf 5))
+
+type y = {data:y option ref}
+
+let _ = {data=ref (Some {data=ref None})}
+
+let _ = Some true
+let _ = Some "a"
+
+let rec foo n =
+  if n = 0 then true else bar (n - 1)
+
+and bar n =
+  if n = 0 then false else foo (n - 1)
+
+let b = bar 5
+let f = foo 5
+
+let mkl n =
+  let rec aux i =
+    if i < n then i::aux (i+1)
+    else [i] in aux 0
+
+open "test.bc"
+
+let sum = total (mkl 10)
+
+let _ = 
+  let rec a b = 3 and c b = a b in c 5
+
+let _ = 
+  let a = fun z -> let x = z in fun z -> x in
+  a 5 7
+
+let z = 3
+
+let _ = 
+  let a = 
+    let x y = z in fun z -> x z
+  in a 7

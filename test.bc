@@ -1,0 +1,48 @@
+let rec total = function
+| [] -> 0
+| x::xl -> x + total xl
+
+let rec fact n =
+  if n <= 0 then 1 else n * fact (n - 1)
+
+let rec fibo n =
+  if n < 2 then n
+  else fibo (n - 1) + fibo (n - 2)
+
+let _ = fact 10
+
+let _ = fibo 10
+
+type 'a x = {name:string;data:'a}
+
+let a = {name="a";data=0}
+
+let _ = a.data
+
+let {data=data;name=name} = a
+
+let x::xl = [5;6]
+
+let b = ref [] 
+
+let _ =
+  b := [5];!b
+
+let rec gcd m n =
+  if m = 0 then n else
+  if m <= n then gcd m (n-m) else
+  gcd n (m-n) 
+
+let _ = gcd 21600 337500
+
+let rec make_adder x =
+  let rec adder y = x + y in
+  adder
+let _ =  printf "%d\n" ((make_adder 3) 7)
+
+let _ = 
+  let x = 10 in
+  let rec f y =
+    if y = 0 then 0 else
+    x + f (y - 1) in
+  printf "%d\n" (f 123)
