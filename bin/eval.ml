@@ -324,8 +324,7 @@ let rec subst_to_expr expr l =
     | Erecord_access (e, lbl) -> ref (Erecord_access (subst_to_expr e l, lbl))
     | Ewhen (lhs, rhs) -> ref (Ewhen (subst_to_expr lhs l, subst_to_expr rhs l))
   in
-  expr.ast := !(List.fold_left aux expr.ast l);
-  expr
+  { ast = List.fold_left aux expr.ast l; pos = expr.pos }
 
 and subst_to_pat pat l =
   let get_name = function
@@ -352,8 +351,7 @@ and subst_to_pat pat l =
     | Precord f ->
         ref (Precord (List.map (fun (lbl, p) -> (lbl, subst_to_pat p l)) f))
   in
-  pat.ast := !(List.fold_left aux pat.ast l);
-  pat
+  { ast = List.fold_left aux pat.ast l; pos = pat.pos }
 
 (*
 (fun pat -> expr) expr'
@@ -394,7 +392,9 @@ and do_matches pat_exprs expr' =
             | _ -> do_matches rest expr')
         | _ -> expr
       with _ -> do_matches rest expr')
-  | [] -> raise (InterpreterError ("no matching found" ^ "expr':"^ show_expr expr' ))
+  | [] ->
+      raise
+        (InterpreterError ("no matching found" ^ "expr':" ^ show_expr expr'))
 
 and eval1 expr =
   match !(expr.ast) with
