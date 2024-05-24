@@ -68,7 +68,8 @@ let rec pp_ty = function
 (*| ty -> Printf.sprintf "%s" (*(show_ty ty)*)*)
 (*| ty -> failwith (Printf.sprintf "pp_ty %s" (show_ty ty))*)
 
-let pp_decl = function
+let pp_decl decl =
+  match decl.ast with
   | Drecord (n, [], (name, ty) :: []) ->
       "type " ^ n ^ " = {" ^ name ^ " : " ^ pp_ty ty ^ "}"
   | Drecord (n, x :: [], (name, ty) :: []) ->
@@ -191,7 +192,7 @@ let pp_exp expr =
   let rec aux expr n =
     if n > 10 then "..."
     else
-      match !expr with
+      match !(expr.ast) with
       | Econstant cst -> pp_cst cst
       | Eprim _ -> "<fun>"
       | Etuple (x :: xl) ->
@@ -208,7 +209,7 @@ let pp_exp expr =
           ^ "]"
       | Eloc l -> "ref " ^ aux (lookuploc l) (n + 1)
       | Eunit -> "()"
-      | Econstruct (name, { contents = Etag; _ }) -> name
+      | Econstruct (name, { ast = { contents = Etag; _ }; _ }) -> name
       | Econstruct (name, expr) -> name ^ " " ^ aux expr (n + 1)
       | Efix _ -> "<fun>"
       | Efunction _ -> "<fun>"

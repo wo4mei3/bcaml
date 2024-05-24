@@ -203,15 +203,15 @@ let rec subst_ty t id ty =
 
 let rec type_of_decl name decls =
   let rec aux = function
-    | Drecord (n, tyl, fields) :: _ when n = name -> (
+    | { ast = Drecord (n, tyl, fields); _ } :: _ when n = name -> (
         match instantiate 1 (Trecord (n, tyl, fields)) with
         | Trecord (_, tyl, _) as ty -> (tyl, ty)
         | _ -> failwith "type_of_decl")
-    | Dvariant (n, tyl, fields) :: _ when n = name -> (
+    | { ast = Dvariant (n, tyl, fields); _ } :: _ when n = name -> (
         match instantiate 1 (Tvariant (n, tyl, fields)) with
         | Tvariant (_, tyl, _) as ty -> (tyl, ty)
         | _ -> failwith "type_of_decl")
-    | Dabbrev (n, tyl, ty) :: _ when n = name -> (
+    | { ast = Dabbrev (n, tyl, ty); _ } :: _ when n = name -> (
         match instantiate 1 (Trecord (n, tyl, [ ("temp", ty) ])) with
         | Trecord (_, tyl, [ ("temp", ty) ]) -> (tyl, ty)
         | _ -> failwith "type_of_decl")
@@ -254,7 +254,9 @@ let fields_of_type ty =
 
 let label_belong_to label decls =
   let rec aux = function
-    | Drecord (name, _, fields) :: _ when List.mem_assoc label fields -> name
+    | { ast = Drecord (name, _, fields); _ } :: _
+      when List.mem_assoc label fields ->
+        name
     | _ :: rest -> aux rest
     | _ -> failwith (Printf.sprintf "invalid label %s" label)
   in
@@ -262,14 +264,16 @@ let label_belong_to label decls =
 
 let tag_belong_to tag decls =
   let rec aux = function
-    | Dvariant (name, _, fields) :: _ when List.mem_assoc tag fields -> name
+    | { ast = Dvariant (name, _, fields); _ } :: _
+      when List.mem_assoc tag fields ->
+        name
     | _ :: rest -> aux rest
     | _ -> failwith (Printf.sprintf "invalid tag %s" tag)
   in
   aux decls
 
 let rec is_simple expr =
-  match !expr with
+  match !(expr.ast) with
   | Evar _ -> true
   | Econstant _ -> true
   | Eprim _ -> true
@@ -299,11 +303,37 @@ let rec is_simple expr =
   | Ewhen (expr, body) -> is_simple expr && is_simple body
 
 let rec curry = function
-  | { contents = Efunction [ ({ contents = Pparams [] }, e) ] } -> e
-  | { contents = Efunction [ ({ contents = Pparams (p :: pl) }, e) ] } ->
-      ref
-        (Efunction
-           [ (p, curry (ref (Efunction [ ({ contents = Pparams pl }, e) ]))) ])
+  | {
+      ast =
+        { contents = Efunction [ ({ ast = { contents = Pparams [] }; _ }, e) ] };
+      _;
+    } ->
+      e
+  | {
+      ast =
+        {
+          contents =
+            Efunction [ ({ ast = { contents = Pparams (p :: pl) }; pos }, e) ];
+        };
+      _;
+    } ->
+      {
+        ast =
+          ref
+            (Efunction
+               [
+                 ( p,
+                   curry
+                     {
+                       ast =
+                         ref
+                           (Efunction
+                              [ ({ ast = { contents = Pparams pl }; pos }, e) ]);
+                       pos;
+                     } );
+               ]);
+        pos;
+      }
   | e -> e
 
 let type_format fmt =
@@ -383,7 +413,7 @@ let type_prim level = function
       Tarrow (Tformat (remain_ty, Tstring), remain_ty)
 
 let rec type_pat decls level new_env pat ty =
-  match !pat with
+  match !(pat.ast) with
   | Pwild -> ("_", ty) :: new_env
   | Pvar s ->
       if List.mem_assoc s new_env then
@@ -467,7 +497,7 @@ and type_variant_pat env decls level (tag_name, pat) ty =
   type_pat decls level [] pat ty @ env
 
 and type_expr env decls level expr =
-  match !expr with
+  match !(expr.ast) with
   | Evar s ->
       let ty =
         try instantiate level (List.assoc s env)
@@ -528,8 +558,8 @@ and type_expr env decls level expr =
   | Econstruct (tag_name, e) ->
       let ty = type_variant_expr env decls level (tag_name, e) in
       ty
-  | Eapply (({ contents = Evar s } as p), args) when List.mem_assoc s prim_list
-    ->
+  | Eapply (({ ast = { contents = Evar s }; _ } as p), args)
+    when List.mem_assoc s prim_list ->
       let prim =
         try List.assoc s prim_list
         with Not_found -> failwith ("variable not found:" ^ s)
@@ -537,41 +567,84 @@ and type_expr env decls level expr =
       let fct_ty = type_expr env decls level p in
       let args =
         if is_unary prim then (
-          p :=
-            Efunction
-              [ (ref (Pvar "0"), ref (Eapply (ref !p, [ ref (Evar "0") ]))) ];
-          List.map (type_expr env decls level) args)
-        else if is_binary prim then (
-          p :=
+          p.ast :=
             Efunction
               [
-                ( ref (Pparams [ ref (Pvar "0"); ref (Pvar "1") ]),
-                  ref (Eapply (ref !p, [ ref (Evar "0"); ref (Evar "1") ])) );
+                ( { ast = ref (Pvar "0"); pos = expr.pos },
+                  {
+                    ast =
+                      ref
+                        (Eapply
+                           ( { ast = ref !(p.ast); pos = expr.pos },
+                             [ { ast = ref (Evar "0"); pos = expr.pos } ] ));
+                    pos = expr.pos;
+                  } );
               ];
-          p := !(curry p);
+          List.map (type_expr env decls level) args)
+        else if is_binary prim then (
+          p.ast :=
+            Efunction
+              [
+                ( {
+                    ast =
+                      ref
+                        (Pparams
+                           [
+                             { ast = ref (Pvar "0"); pos = expr.pos };
+                             { ast = ref (Pvar "1"); pos = expr.pos };
+                           ]);
+                    pos = expr.pos;
+                  },
+                  {
+                    ast =
+                      ref
+                        (Eapply
+                           ( { ast = ref !(p.ast); pos = expr.pos },
+                             [
+                               { ast = ref (Evar "0"); pos = expr.pos };
+                               { ast = ref (Evar "1"); pos = expr.pos };
+                             ] ));
+                    pos = expr.pos;
+                  } );
+              ];
+          p.ast := !((curry p).ast);
           List.map (type_expr env decls level) args)
         else
           let fmt = List.hd args in
           let len, fmt_ty =
-            match !fmt with
+            match !(fmt.ast) with
             | Econstant (Cstring fmt) -> type_format fmt
             | _ -> failwith "not a string"
           in
-          p :=
+          p.ast :=
             Efunction
-              (( ref
-                   (Pparams
-                      (List.init (len + 1) (fun i ->
-                           ref (Pvar (string_of_int i))))),
+              (( {
+                   ast =
+                     ref
+                       (Pparams
+                          (List.init (len + 1) (fun i ->
+                               {
+                                 ast = ref (Pvar (string_of_int i));
+                                 pos = expr.pos;
+                               })));
+                   pos = expr.pos;
+                 },
                  {
-                   contents =
-                     Eapply
-                       ( ref !p,
-                         List.init (len + 1) (fun i ->
-                             ref (Evar (string_of_int i))) );
+                   ast =
+                     {
+                       contents =
+                         Eapply
+                           ( { ast = ref !(p.ast); pos = expr.pos },
+                             List.init (len + 1) (fun i ->
+                                 {
+                                   ast = ref (Evar (string_of_int i));
+                                   pos = expr.pos;
+                                 }) );
+                     };
+                   pos = expr.pos;
                  } )
               :: []);
-          p := !(curry p);
+          p.ast := !((curry p).ast);
           fmt_ty :: List.map (type_expr env decls level) (List.tl args)
       in
       let ty =
@@ -585,45 +658,88 @@ and type_expr env decls level expr =
           fct_ty args
       in
       ty
-  | Eapply (({ contents = Eprim prim } as p), args) ->
+  | Eapply (({ ast = { contents = Eprim prim }; _ } as p), args) ->
       let fct_ty = type_expr env decls level p in
       let args =
         if is_unary prim then (
-          p :=
-            Efunction
-              [ (ref (Pvar "0"), ref (Eapply (ref !p, [ ref (Evar "0") ]))) ];
-          List.map (type_expr env decls level) args)
-        else if is_binary prim then (
-          p :=
+          p.ast :=
             Efunction
               [
-                ( ref (Pparams [ ref (Pvar "0"); ref (Pvar "1") ]),
-                  ref (Eapply (ref !p, [ ref (Evar "0"); ref (Evar "1") ])) );
+                ( { ast = ref (Pvar "0"); pos = expr.pos },
+                  {
+                    ast =
+                      ref
+                        (Eapply
+                           ( { ast = ref !(p.ast); pos = expr.pos },
+                             [ { ast = ref (Evar "0"); pos = expr.pos } ] ));
+                    pos = expr.pos;
+                  } );
               ];
-          p := !(curry p);
+          List.map (type_expr env decls level) args)
+        else if is_binary prim then (
+          p.ast :=
+            Efunction
+              [
+                ( {
+                    ast =
+                      ref
+                        (Pparams
+                           [
+                             { ast = ref (Pvar "0"); pos = expr.pos };
+                             { ast = ref (Pvar "1"); pos = expr.pos };
+                           ]);
+                    pos = expr.pos;
+                  },
+                  {
+                    ast =
+                      ref
+                        (Eapply
+                           ( { ast = ref !(p.ast); pos = expr.pos },
+                             [
+                               { ast = ref (Evar "0"); pos = expr.pos };
+                               { ast = ref (Evar "1"); pos = expr.pos };
+                             ] ));
+                    pos = expr.pos;
+                  } );
+              ];
+          p.ast := !((curry p).ast);
           List.map (type_expr env decls level) args)
         else
           let fmt = List.hd args in
           let len, fmt_ty =
-            match !fmt with
+            match !(fmt.ast) with
             | Econstant (Cstring fmt) -> type_format fmt
             | _ -> failwith "not a string"
           in
-          p :=
+          p.ast :=
             Efunction
-              (( ref
-                   (Pparams
-                      (List.init (len + 1) (fun i ->
-                           ref (Pvar (string_of_int i))))),
+              (( {
+                   ast =
+                     ref
+                       (Pparams
+                          (List.init (len + 1) (fun i ->
+                               {
+                                 ast = ref (Pvar (string_of_int i));
+                                 pos = expr.pos;
+                               })));
+                   pos = expr.pos;
+                 },
                  {
-                   contents =
-                     Eapply
-                       ( ref !p,
-                         List.init (len + 1) (fun i ->
-                             ref (Evar (string_of_int i))) );
+                   ast =
+                     {
+                       contents =
+                         Eapply
+                           ( { ast = ref !(p.ast); pos = expr.pos },
+                             List.init (len + 1) (fun i ->
+                                 {
+                                   ast = ref (Evar (string_of_int i));
+                                   pos = expr.pos;
+                                 }) );
+                     };
+                   pos = expr.pos;
                  } )
               :: []);
-          p := !(curry p);
+          p.ast := !((curry p).ast);
           fmt_ty :: List.map (type_expr env decls level) (List.tl args)
       in
       let ty =
@@ -681,7 +797,7 @@ and type_expr env decls level expr =
   | Efunction l -> (
       match l with
       | [] -> failwith "empty function"
-      | [ ({ contents = Pparams patl }, e) ] ->
+      | [ ({ ast = { contents = Pparams patl }; _ }, e) ] ->
           let tyl = List.map (fun _ -> new_type_var level) patl in
           let add_env =
             List.fold_left2 (type_pat decls level) [] patl tyl @ env
@@ -692,7 +808,7 @@ and type_expr env decls level expr =
               (fun ret_ty arg_ty -> Tarrow (arg_ty, ret_ty))
               ret_ty (List.rev tyl)
           in
-          expr := !(curry expr);
+          expr.ast := !((curry expr).ast);
           ty
       | pat_expr ->
           let arg_ty = new_type_var level in

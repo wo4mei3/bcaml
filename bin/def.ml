@@ -18,19 +18,19 @@ let rec check_valid_ty tyl = function
 
 let check_valid_decl decl =
   let rec aux = function
-    | Drecord (_, tyl, fields) :: rest ->
+    | { ast = Drecord (_, tyl, fields); _ } :: rest ->
         if List.for_all (fun (_, t) -> check_valid_ty tyl t) fields then
           aux rest
         else
           failwith
             "a type variable doesn't appear in the type parameter list is found"
-    | Dvariant (_, tyl, fields) :: rest ->
+    | { ast = Dvariant (_, tyl, fields); _ } :: rest ->
         if List.for_all (fun (_, t) -> check_valid_ty tyl t) fields then
           aux rest
         else
           failwith
             "a type variable doesn't appear in the type parameter list is found"
-    | Dabbrev (_, tyl, ty) :: rest ->
+    | { ast = Dabbrev (_, tyl, ty); _ } :: rest ->
         if check_valid_ty tyl ty then aux rest
         else
           failwith
@@ -48,7 +48,7 @@ let name_is_checked name seen =
   if List.mem_assoc name seen then !(List.assoc name seen) = Checked else false
 
 let rec is_abbrev name = function
-  | Dabbrev (name', _, _) :: _ when name = name' -> true
+  | { ast = Dabbrev (name', _, _); _ } :: _ when name = name' -> true
   | _ :: rest -> is_abbrev name rest
   | [] -> false
 
@@ -77,7 +77,7 @@ let rec abbrev_found_in_ty decl seen = function
 
 and abbrev_found_in_decl name seen decl =
   let rec aux = function
-    | Dabbrev (n, _, ty) :: _ when n = name ->
+    | { ast = Dabbrev (n, _, ty); _ } :: _ when n = name ->
         let pair = (name, ref Checking) in
         abbrev_found_in_ty decl (pair :: seen) ty;
         snd pair := Checked
@@ -88,7 +88,7 @@ and abbrev_found_in_decl name seen decl =
 
 let check_recursive_abbrev decl =
   let rec aux = function
-    | Dabbrev (name, _, _) :: rest ->
+    | { ast = Dabbrev (name, _, _); _ } :: rest ->
         abbrev_found_in_decl name [] decl;
         aux rest
     | _ :: rest -> aux rest
@@ -97,8 +97,8 @@ let check_recursive_abbrev decl =
   aux decl
 
 let rec is_def name = function
-  | Drecord (name', _, _) :: _ when name = name' -> true
-  | Dvariant (name', _, _) :: _ when name = name' -> true
+  | { ast = Drecord (name', _, _); _ } :: _ when name = name' -> true
+  | { ast = Dvariant (name', _, _); _ } :: _ when name = name' -> true
   | _ :: rest -> is_def name rest
   | [] -> false
 
@@ -129,13 +129,13 @@ let rec def_found_in_ty decl seen = function
 
 and def_found_in_decl name seen decl =
   let rec aux = function
-    | Drecord (n, _, fields) :: _ when n = name ->
+    | { ast = Drecord (n, _, fields); _ } :: _ when n = name ->
         let pair = (name, ref Checking) in
         List.iter
           (fun t -> def_found_in_ty decl (pair :: seen) t)
           (List.map snd fields);
         snd pair := Checked
-    | Dvariant (n, _, fields) :: _ when n = name ->
+    | { ast = Dvariant (n, _, fields); _ } :: _ when n = name ->
         let pair = (name, ref Checking) in
         List.iter
           (fun t -> def_found_in_ty decl (pair :: seen) t)
@@ -150,10 +150,10 @@ and def_found_in_decl name seen decl =
 
 let check_recursive_def decl =
   let rec aux = function
-    | Drecord (name, _, _) :: rest ->
+    | { ast = Drecord (name, _, _); _ } :: rest ->
         def_found_in_decl name [] decl;
         aux rest
-    | Dvariant (name, _, _) :: rest ->
+    | { ast = Dvariant (name, _, _); _ } :: rest ->
         def_found_in_decl name [] decl;
         aux rest
     | _ :: rest -> aux rest

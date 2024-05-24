@@ -4,7 +4,13 @@ exception InterpreterError of string
 
 type ctx = (string * expr) list [@@deriving show]
 
-let ctx = ref (List.map (fun (n, p) -> (n, ref (Eprim p))) prim_list)
+let ctx =
+  ref
+    (List.map
+       (fun (n, p) ->
+         (n, { ast = ref (Eprim p); pos = (Lexing.dummy_pos, Lexing.dummy_pos) }))
+       prim_list)
+
 let extendcontext name v = ctx := (name, v) :: !ctx
 let lookupcontext name = List.assoc name !ctx
 
@@ -29,7 +35,7 @@ let updatestore n v =
   store := f (n, !store)
 
 let rec isval expr =
-  match !expr with
+  match !(expr.ast) with
   | Evar _ -> false
   | Econstant _ -> true
   | Eprim Pprintf | Eprim Psprintf -> true
@@ -67,11 +73,11 @@ let eval_prim_unary prim x =
   | Pintofstring -> do_unary (Ustring_to_int int_of_string) x
   | Pstringoffloat -> do_unary (Ufloat_to_string string_of_float) x
   | Pfloatofstring -> do_unary (Ustring_to_float float_of_string) x
-  | Pfailwith -> raise (InterpreterError (get_string (get_constant !x)))
+  | Pfailwith -> raise (InterpreterError (get_string (get_constant !(x.ast))))
   | _ -> failwith "eval_prim_unary"
 
 let rec eval_prim_eq x y =
-  match (!x, !y) with
+  match (!(x.ast), !(y.ast)) with
   | Econstant l, Econstant r -> l = r
   | Etuple l, Etuple r -> List.for_all2 (fun l r -> eval_prim_eq l r) l r
   | Elist l, Elist r -> List.for_all2 (fun l r -> eval_prim_eq l r) l r
@@ -87,7 +93,7 @@ let rec eval_prim_eq x y =
   | _, _ -> failwith "eval_prim_eq"
 
 let rec eval_prim_eq_imm x y =
-  match (!x, !y) with
+  match (!(x.ast), !(y.ast)) with
   | Econstant l, Econstant r -> l = r
   | Etuple l, Etuple r -> List.for_all2 (fun l r -> eval_prim_eq_imm l r) l r
   | Elist l, Elist r -> List.for_all2 (fun l r -> eval_prim_eq_imm l r) l r
@@ -132,7 +138,7 @@ let eval_prim_binary prim x y =
   | Ppower -> do_binary (Bfloat ( ** )) x y
   | Pconcatstring -> do_binary (Bstring ( ^ )) x y
   | Pconcat -> (
-      match (!x, !y) with
+      match (!(x.ast), !(y.ast)) with
       | Elist x, Elist y -> Elist (x @ y)
       | _ -> failwith "eval_prim_binary")
   | _ -> failwith "eval_prim_binary"
@@ -221,7 +227,7 @@ let gen_alpha () =
 
 let rec collect_pvars pat =
   let aux l =
-    match !pat with
+    match !(pat.ast) with
     | Pwild -> l
     | Pvar name -> name :: l
     | Pparams pl ->
@@ -318,7 +324,8 @@ let rec subst_to_expr expr l =
     | Erecord_access (e, lbl) -> ref (Erecord_access (subst_to_expr e l, lbl))
     | Ewhen (lhs, rhs) -> ref (Ewhen (subst_to_expr lhs l, subst_to_expr rhs l))
   in
-  List.fold_left aux expr l
+  expr.ast := !(List.fold_left aux expr.ast l);
+  expr
 
 and subst_to_pat pat l =
   let get_name = function
@@ -331,10 +338,9 @@ and subst_to_pat pat l =
     | Pvar name when n = name -> p
     | Pvar _ -> pat
     | Pparams pl -> ref (Pparams (List.map (fun p -> subst_to_pat p l) pl))
-    | Palias (pat, name) ->
-        ref
-          (Palias
-             (subst_to_pat pat l, get_name (subst_to_pat (ref (Pvar name)) l)))
+    | Palias (pat, name) when n = name ->
+        ref (Palias (subst_to_pat pat l, get_name p))
+    | Palias (pat, name) -> ref (Palias (subst_to_pat pat l, name))
     | Pconstant _ -> pat
     | Ptuple pl -> ref (Ptuple (List.map (fun p -> subst_to_pat p l) pl))
     | Pnil -> pat
@@ -346,13 +352,14 @@ and subst_to_pat pat l =
     | Precord f ->
         ref (Precord (List.map (fun (lbl, p) -> (lbl, subst_to_pat p l)) f))
   in
-  List.fold_left aux pat l
+  pat.ast := !(List.fold_left aux pat.ast l);
+  pat
 
 (*
 (fun pat -> expr) expr'
 *)
 let rec do_match pat expr =
-  match (!pat, !expr) with
+  match (!(pat.ast), !(expr.ast)) with
   | Pwild, _ -> [ ("_", expr) ]
   | Pvar name, _ -> [ (name, expr) ]
   | Pparams (p :: _), _ -> do_match p expr
@@ -362,7 +369,7 @@ let rec do_match pat expr =
       List.fold_left2 (fun l p e -> l @ do_match p e) [] pl el
   | Pnil, Elist [] -> []
   | Pcons (car, cdr), Elist (e :: el) ->
-      do_match car e @ do_match cdr (ref (Elist el))
+      do_match car e @ do_match cdr { ast = ref (Elist el); pos = expr.pos }
   | Pref p, Eloc loc -> do_match p (lookuploc loc)
   | Punit, Eunit | Ptag, Etag -> []
   | Pconstruct (name1, pat), Econstruct (name2, expr) when name1 = name2 ->
@@ -378,98 +385,140 @@ and do_matches pat_exprs expr' =
   match pat_exprs with
   | (pat, expr) :: rest -> (
       try
-        let l = do_match pat expr' in
+        let l = List.map (fun (n, e) -> (n, e.ast)) (do_match pat expr') in
         let expr = subst_to_expr expr l in
-        match !expr with
+        match !(expr.ast) with
         | Ewhen (flag, expr) -> (
-            match !(eval flag) with
+            match !((eval flag).ast) with
             | Econstant (Cbool true) -> expr
             | _ -> do_matches rest expr')
         | _ -> expr
       with _ -> do_matches rest expr')
-  | [] -> raise (InterpreterError "no matching found")
+  | [] -> raise (InterpreterError ("no matching found" ^ "expr':"^ show_expr expr' ))
 
 and eval1 expr =
-  match !expr with
+  match !(expr.ast) with
   | Evar name -> lookupcontext name
   | Etuple l when not (List.exists (fun x -> isval x) l) ->
-      ref (Etuple (List.map eval1 l))
-  | Enil -> ref (Elist [])
-  | Econs (car, cdr) when not (isval car) -> ref (Econs (eval1 car, cdr))
-  | Econs (car, cdr) when not (isval cdr) -> ref (Econs (car, eval1 cdr))
-  | Econs (car, { contents = Elist cdr }) -> ref (Elist (car :: cdr))
-  | Eref e when isval e -> ref (Eloc (extendstore e))
-  | Eref expr -> ref (Eref (eval1 expr))
-  | Ederef { contents = Eloc l } -> lookuploc l
-  | Ederef expr -> ref (Ederef (eval1 expr))
-  | Eassign (lhs, rhs) when not (isval lhs) -> ref (Eassign (eval1 lhs, rhs))
-  | Eassign (lhs, rhs) when not (isval rhs) -> ref (Eassign (lhs, eval1 rhs))
-  | Eassign ({ contents = Eloc l }, rhs) ->
+      { ast = ref (Etuple (List.map eval1 l)); pos = expr.pos }
+  | Enil -> { ast = ref (Elist []); pos = expr.pos }
+  | Econs (car, cdr) when not (isval car) ->
+      { ast = ref (Econs (eval1 car, cdr)); pos = expr.pos }
+  | Econs (car, cdr) when not (isval cdr) ->
+      { ast = ref (Econs (car, eval1 cdr)); pos = expr.pos }
+  | Econs (car, { ast = { contents = Elist cdr }; _ }) ->
+      { ast = ref (Elist (car :: cdr)); pos = expr.pos }
+  | Eref e when isval e -> { ast = ref (Eloc (extendstore e)); pos = expr.pos }
+  | Eref expr -> { ast = ref (Eref (eval1 expr)); pos = expr.pos }
+  | Ederef { ast = { contents = Eloc l }; _ } -> lookuploc l
+  | Ederef expr -> { ast = ref (Ederef (eval1 expr)); pos = expr.pos }
+  | Eassign (lhs, rhs) when not (isval lhs) ->
+      { ast = ref (Eassign (eval1 lhs, rhs)); pos = expr.pos }
+  | Eassign (lhs, rhs) when not (isval rhs) ->
+      { ast = ref (Eassign (lhs, eval1 rhs)); pos = expr.pos }
+  | Eassign ({ ast = { contents = Eloc l }; _ }, rhs) ->
       updatestore l rhs;
-      ref Eunit
-  | Econstruct (name, expr) when isval expr -> ref (Econstruct (name, expr))
-  | Econstruct (name, expr) -> ref (Econstruct (name, eval1 expr))
+      { ast = ref Eunit; pos = expr.pos }
+  | Econstruct (name, expr) when isval expr ->
+      { ast = ref (Econstruct (name, expr)); pos = expr.pos }
+  | Econstruct (name, expr) ->
+      { ast = ref (Econstruct (name, eval1 expr)); pos = expr.pos }
   | Eapply (e, l) when not (List.for_all (fun x -> isval x) l) ->
-      ref (Eapply (e, List.map (fun e -> eval e) l))
-  | Eapply ({ contents = Eprim prim }, [ e ]) when is_unary prim ->
-      ref (eval_prim_unary prim e)
-  | Eapply ({ contents = Eprim prim }, [ e1; e2 ]) when is_binary prim ->
-      ref (eval_prim_binary prim e1 e2)
-  | Eapply ({ contents = Eprim prim }, fmt :: args) when is_varargs prim -> (
+      { ast = ref (Eapply (e, List.map (fun e -> eval e) l)); pos = expr.pos }
+  | Eapply ({ ast = { contents = Eprim prim }; _ }, [ e ]) when is_unary prim ->
+      { ast = ref (eval_prim_unary prim e); pos = expr.pos }
+  | Eapply ({ ast = { contents = Eprim prim }; _ }, [ e1; e2 ])
+    when is_binary prim ->
+      { ast = ref (eval_prim_binary prim e1 e2); pos = expr.pos }
+  | Eapply ({ ast = { contents = Eprim prim }; _ }, fmt :: args)
+    when is_varargs prim -> (
       match prim with
       | Pprintf ->
-          eval_prim_printf
-            (!fmt |> get_constant |> get_string)
-            (List.map (fun e -> !e) args)
+          {
+            ast =
+              eval_prim_printf
+                (!(fmt.ast) |> get_constant |> get_string)
+                (List.map (fun e -> !(e.ast)) args);
+            pos = expr.pos;
+          }
       | Psprintf ->
-          eval_prim_sprintf
-            (!fmt |> get_constant |> get_string)
-            (List.map (fun e -> !e) args)
+          {
+            ast =
+              eval_prim_sprintf
+                (!(fmt.ast) |> get_constant |> get_string)
+                (List.map (fun e -> !(e.ast)) args);
+            pos = expr.pos;
+          }
       | _ -> failwith "niether printf nor sprintf")
   | Eapply
-      ({ contents = Efix (({ contents = Efunction _ } as f), pat_exprs') }, el)
-    ->
+      ( {
+          ast =
+            {
+              contents =
+                Efix ({ ast = { contents = Efunction _ } as f; _ }, pat_exprs');
+            };
+          _;
+        },
+        el ) ->
       let f =
         List.fold_left
           (fun f (p, e) ->
-            subst_to_expr f (do_match p (ref (Efix (e, pat_exprs')))))
-          f pat_exprs'
+            subst_to_expr f
+              ((List.map (fun (n, e) -> (n, e.ast)))
+                 (do_match p
+                    { ast = ref (Efix (e, pat_exprs')); pos = expr.pos })))
+          { ast = f; pos = expr.pos }
+          pat_exprs'
       in
-      ref (Eapply (f, el))
-  | Eapply (e, l) when not (isval e) -> ref (Eapply (eval1 e, l))
-  | Eapply ({ contents = Efunction pat_exprs }, e :: []) ->
+      { ast = ref (Eapply (f, el)); pos = expr.pos }
+  | Eapply (e, l) when not (isval e) ->
+      { ast = ref (Eapply (eval1 e, l)); pos = expr.pos }
+  | Eapply ({ ast = { contents = Efunction pat_exprs }; _ }, e :: []) ->
       do_matches pat_exprs e
-  | Eapply ({ contents = Efunction pat_exprs }, e :: el) ->
-      ref (Eapply (do_matches pat_exprs e, el))
+  | Eapply ({ ast = { contents = Efunction pat_exprs }; _ }, e :: el) ->
+      { ast = ref (Eapply (do_matches pat_exprs e, el)); pos = expr.pos }
   | Elet (pat_exprs, expr) ->
       List.fold_left
-        (fun expr (p, e) -> subst_to_expr expr (do_match p (eval e)))
+        (fun expr (p, e) ->
+          subst_to_expr expr
+            (List.map (fun (n, e) -> (n, e.ast)) (do_match p (eval e))))
         expr pat_exprs
   | Eletrec (pat_exprs, expr)
     when not (List.for_all (fun (_, x) -> isval x) pat_exprs) ->
-      ref (Eletrec (List.map (fun (p, e) -> (p, eval e)) pat_exprs, expr))
+      {
+        ast =
+          ref (Eletrec (List.map (fun (p, e) -> (p, eval e)) pat_exprs, expr));
+        pos = expr.pos;
+      }
   | Eletrec (pat_exprs, expr) ->
       let expr =
         List.fold_left
           (fun expr (p, e) ->
-            let e' = ref (Efix (e, pat_exprs)) in
-            subst_to_expr expr (do_match p e'))
+            let e' = { ast = ref (Efix (e, pat_exprs)); pos = expr.pos } in
+            subst_to_expr expr
+              (List.map (fun (n, e) -> (n, e.ast)) (do_match p e')))
           expr pat_exprs
       in
       expr
   | Esequence (lhs, rhs) when not (isval lhs) ->
-      ref (Esequence (eval1 lhs, rhs))
-  | Esequence ({ contents = Eunit }, rhs) -> rhs
-  | Econdition ({ contents = Econstant (Cbool true) }, lhs, _) -> lhs
-  | Econdition ({ contents = Econstant (Cbool false) }, _, rhs) -> rhs
-  | Econdition (flag, lhs, rhs) -> ref (Econdition (eval1 flag, lhs, rhs))
+      { ast = ref (Esequence (eval1 lhs, rhs)); pos = expr.pos }
+  | Esequence ({ ast = { contents = Eunit }; _ }, rhs) -> rhs
+  | Econdition ({ ast = { contents = Econstant (Cbool true) }; _ }, lhs, _) ->
+      lhs
+  | Econdition ({ ast = { contents = Econstant (Cbool false) }; _ }, _, rhs) ->
+      rhs
+  | Econdition (flag, lhs, rhs) ->
+      { ast = ref (Econdition (eval1 flag, lhs, rhs)); pos = expr.pos }
   | Econstraint (expr, _) -> expr
   | Erecord fields
     when not (List.for_all (fun x -> isval x) (List.map snd fields)) ->
-      ref (Erecord (List.map (fun (n, e) -> (n, eval1 e)) fields))
+      {
+        ast = ref (Erecord (List.map (fun (n, e) -> (n, eval1 e)) fields));
+        pos = expr.pos;
+      }
   | Erecord_access (expr, label) when not (isval expr) ->
-      ref (Erecord_access (eval1 expr, label))
-  | Erecord_access ({ contents = Erecord fields }, label) ->
+      { ast = ref (Erecord_access (eval1 expr, label)); pos = expr.pos }
+  | Erecord_access ({ ast = { contents = Erecord fields }; _ }, label) ->
       List.assoc label fields
   | _ when isval expr -> expr
   | _ -> failwith "eval1"

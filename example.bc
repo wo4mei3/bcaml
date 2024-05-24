@@ -48,7 +48,7 @@ let _ = (fun x y-> x) 7 0
 let _ =
 (function 
 | [] -> true) []
-
+let () = printf "%d %s\n" 5 "dogs"
 let _ = [2] @ [5]
 
 let _ =
@@ -75,7 +75,7 @@ let a = gen_id()
 let a = gen_id()
 
 let _ = !curr_id
-
+let () = printf "%d %s\n" 5 "cats"
 type 'a tree =
 | Node of 'a tree ref * 'a tree ref
 | Leaf of 'a
@@ -89,6 +89,8 @@ let _ = {data=ref (Some {data=ref None})}
 let _ = Some true
 let _ = Some "a"
 
+let () = printf "%d %s\n" 5 "frogs"
+(*
 let rec foo n =
   if n = 0 then true else bar (n - 1)
 
@@ -98,6 +100,8 @@ and bar n =
 let b = bar 5
 let f = foo 5
 
+let () = printf "%d %s\n" 5 "bunny"
+
 let mkl n =
   let rec aux i =
     if i < n then i::aux (i+1)
@@ -106,6 +110,7 @@ let mkl n =
 open "test.bc"
 
 let sum = total (mkl 10)
+*)
 
 let _ = 
   let rec a b = 3 and c b = a b in c 5

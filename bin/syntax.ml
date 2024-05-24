@@ -84,9 +84,9 @@ type prim =
 
 type pos = [%import: Lexing.position] [@@deriving show]
 type position = pos * pos [@@deriving show]
-type 'item data = { mutable item : 'item; pos : position } [@@deriving show]
+type 'item ast = { ast : 'item; pos : position } [@@deriving show]
 
-type expr = expr' ref
+type expr = expr' ref ast [@@deriving show]
 
 and expr' =
   | Evar of string
@@ -116,7 +116,7 @@ and expr' =
   | Ewhen of expr * expr
 [@@deriving show]
 
-and pat = pat' ref
+and pat = pat' ref ast [@@deriving show]
 
 and pat' =
   | Pwild
@@ -135,13 +135,17 @@ and pat' =
   | Precord of (string * pat) list
 [@@deriving show]
 
-type type_decl =
+type type_decl = type_decl' ast [@@deriving show]
+
+and type_decl' =
   | Drecord of string * ty list * (string * ty) list
   | Dvariant of string * ty list * (string * ty) list
   | Dabbrev of string * ty list * ty
 [@@deriving show]
 
-and def =
+and def = def' ast
+
+and def' =
   | Defexpr of expr
   | Deflet of (pat * expr) list
   | Defletrec of (pat * expr) list
@@ -248,7 +252,7 @@ type binary_op =
   | Bchar of (char -> char -> char)
 
 let do_unary op e =
-  match (op, !e) with
+  match (op, !(e.ast)) with
   | Uint_to_int op, Econstant (Cint i) -> Econstant (Cint (op i))
   | Uint_to_float op, Econstant (Cint i) -> Econstant (Cfloat (op i))
   | Uint_to_char op, Econstant (Cint i) -> Econstant (Cchar (op i))
@@ -267,7 +271,7 @@ let do_unary op e =
   | _ -> failwith "do_unary"
 
 let do_binary op x y =
-  match (op, !x, !y) with
+  match (op, !(x.ast), !(y.ast)) with
   | Bint op, Econstant (Cint x), Econstant (Cint y) -> Econstant (Cint (op x y))
   | Bbool op, Econstant (Cbool x), Econstant (Cbool y) ->
       Econstant (Cbool (op x y))
@@ -280,7 +284,7 @@ let do_binary op x y =
   | _ -> failwith "do_binary"
 
 let do_binary_eq op x y =
-  match (!x, !y) with
+  match (!(x.ast), !(y.ast)) with
   | Econstant (Cint x), Econstant (Cint y) ->
       Econstant (Cbool ((Obj.magic op : _ -> _ -> bool) x y))
   | Econstant (Cbool x), Econstant (Cbool y) ->

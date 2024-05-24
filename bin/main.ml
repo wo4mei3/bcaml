@@ -15,19 +15,19 @@ let if_debug f =
   else parser := Parser.top
 
 let rec check_ast env decls = function
-  | Deftype decl :: rest ->
+  | { ast = Deftype decl; _ } :: rest ->
       check_valid_decl decl;
       check_recursive_abbrev decl;
       check_recursive_def decl;
       if_debug (fun () -> print_endline (pp_decls decl));
       check_ast env (decl @ decls) rest
-  | Defexpr expr :: rest ->
+  | { ast = Defexpr expr; _ } :: rest ->
       let ty = type_expr env decls 0 expr in
       let expr = eval expr in
       if_debug (fun () ->
           print_endline ("- : " ^ pp_ty ty ^ " = " ^ pp_exp expr));
       check_ast env decls rest
-  | Deflet l :: rest ->
+  | { ast = Deflet l; _ } :: rest ->
       let add_env = type_let env decls l in
       List.iter
         (fun (name, expr) ->
@@ -37,7 +37,7 @@ let rec check_ast env decls = function
                 ^ pp_ty (List.assoc name add_env))))
         (eval_let l);
       check_ast (add_env @ env) decls rest
-  | Defletrec l :: rest ->
+  | { ast = Defletrec l; _ } :: rest ->
       let add_env = type_letrec env decls l in
       List.iter
         (fun (name, expr) ->
@@ -47,7 +47,7 @@ let rec check_ast env decls = function
                 ^ pp_ty (List.assoc name add_env))))
         (eval_letrec l);
       check_ast (add_env @ env) decls rest
-  | Defopen fname :: rest ->
+  | { ast = Defopen fname; _ } :: rest ->
       let fname = Filename.basename fname in
       if List.mem fname !fnames then check_ast env decls rest
       else
