@@ -83,8 +83,8 @@ type prim =
 [@@deriving show]
 
 let get_pos
-    ( { Lexing.pos_lnum = a1; Lexing.pos_bol = b1; Lexing.pos_cnum = c1 ; _},
-      { Lexing.pos_lnum = a2; Lexing.pos_bol = b2; Lexing.pos_cnum = c2 ; _} ) =
+    ( { Lexing.pos_lnum = a1; Lexing.pos_bol = b1; Lexing.pos_cnum = c1; _ },
+      { Lexing.pos_lnum = a2; Lexing.pos_bol = b2; Lexing.pos_cnum = c2; _ } ) =
   ((a1, c1 - b1 + 1), (a2, c2 - b2 + 1))
 
 type loc = (int * int) * (int * int) [@@deriving show]
