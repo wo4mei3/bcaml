@@ -53,7 +53,7 @@ let rec check_ast env decls = function
       else
         let add_env, add_decls = (ref [], ref []) in
         debug := false;
-        do_interp (open_file fname) add_env add_decls;
+        do_interp fname (open_file fname) add_env add_decls;
         List.iter
           (fun (name, ty) ->
             if free_type_vars notgeneric ty != [] then
@@ -67,7 +67,8 @@ let rec check_ast env decls = function
 
 and interp env defs = check_ast env defs
 
-and do_interp inchan env decls =
+and do_interp fname inchan env decls =
+  file := fname;
   try
     if_debug (fun () ->
         print_string "# ";
@@ -98,12 +99,12 @@ let () =
     print_endline "";
     while true do
       debug := true;
-      do_interp stdin env decls
+      do_interp "" stdin env decls
     done)
   else if argc = 2 then (
     let fname = Sys.argv.(1) in
     debug := false;
-    ignore (do_interp (open_file fname) (ref []) (ref [])))
+    ignore (do_interp fname (open_file fname) (ref []) (ref [])))
   else (
     Format.printf "Usage: ./bcaml [filename]\n";
     exit (-1))

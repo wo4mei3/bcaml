@@ -301,6 +301,7 @@ let rec is_simple expr =
   | Erecord l -> List.for_all (fun x -> is_simple x) (List.map snd l)
   | Erecord_access (expr, _) -> is_simple expr
   | Ewhen (expr, body) -> is_simple expr && is_simple body
+  | EBlock1 expr -> is_simple expr
 
 let rec curry = function
   | {
@@ -857,6 +858,7 @@ and type_expr env decls level expr =
       unify ty Tbool;
       let ty = type_expr env decls level body in
       ty
+  | EBlock1 expr -> type_expr env decls level expr
 
 and type_record_expr env decls level fields =
   let first_label = fst (List.hd fields) in

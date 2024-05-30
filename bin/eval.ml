@@ -55,6 +55,7 @@ let rec isval expr =
   | Erecord l -> List.for_all (fun x -> isval x) (List.map snd l)
   | Erecord_access _ -> false
   | Ewhen _ -> true
+  | EBlock1 _ -> false
 
 let eval_prim_unary prim x =
   match prim with
@@ -322,6 +323,7 @@ let rec subst_to_expr expr l =
         ref (Erecord (List.map (fun (lbl, e) -> (lbl, subst_to_expr e l)) f))
     | Erecord_access (e, lbl) -> ref (Erecord_access (subst_to_expr e l, lbl))
     | Ewhen (lhs, rhs) -> ref (Ewhen (subst_to_expr lhs l, subst_to_expr rhs l))
+    | EBlock1 expr -> ref (EBlock1 (subst_to_expr expr l))
   in
   { ast = List.fold_left aux expr.ast l; pos = expr.pos }
 
@@ -376,7 +378,7 @@ let rec do_match pat expr =
       List.fold_left
         (fun l p -> l @ do_match (snd p) (List.assoc (fst p) ef))
         [] pf
-  | _ -> failwith (show_loc (get_pos pat.pos))
+  | _ -> failwith (print_errloc !file (get_pos pat.pos))
 
 and do_matches pat_exprs expr' =
   match pat_exprs with
@@ -519,6 +521,7 @@ and eval1 expr =
       { ast = ref (Erecord_access (eval1 expr, label)); pos = expr.pos }
   | Erecord_access ({ ast = { contents = Erecord fields }; _ }, label) ->
       List.assoc label fields
+  | EBlock1 expr -> expr
   | _ when isval expr -> expr
   | _ -> failwith (show_position expr.pos)
 

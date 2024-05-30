@@ -108,8 +108,8 @@ simple_expr_    :
                 | "(" expr "," separated_nonempty_list(",",expr) ")"
                                                     { make_expr(Etuple($2::$4)) ($startpos($1)) ($endpos($5)) }
                 | "(" expr ":" ty ")"               { make_expr(Econstraint($2,$4)) ($startpos($1)) ($endpos($5)) }
-                | "(" expr ")"                      { $2 }
-                | BEGIN expr END                    { $2 }
+                | "(" expr ")"                      { make_expr(EBlock1($2)) ($startpos($1)) ($endpos($3)) }
+                | BEGIN expr END                    { make_expr(EBlock1($2)) ($startpos($1)) ($endpos($3)) }
                 | simple_expr "." LID               { make_expr(Erecord_access($1,$3)) ($startpos($1)) ($endpos($3)) }
 
 expr_semi_list  : expr_semi_list ";" expr %prec prec_list
