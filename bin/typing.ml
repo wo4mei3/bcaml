@@ -258,7 +258,9 @@ let label_belong_to label decls pos =
       when List.mem_assoc label fields ->
         name
     | _ :: rest -> aux rest
-    | _ -> failwith (Printf.sprintf "%s invalid label %s" (print_errloc !file pos) label)
+    | _ ->
+        failwith
+          (Printf.sprintf "%s invalid label %s" (print_errloc !file pos) label)
   in
   aux decls
 
@@ -268,7 +270,9 @@ let tag_belong_to tag decls pos =
       when List.mem_assoc tag fields ->
         name
     | _ :: rest -> aux rest
-    | _ -> failwith (Printf.sprintf "%s invalid tag %s" (print_errloc !file pos) tag)
+    | _ ->
+        failwith
+          (Printf.sprintf "%s invalid tag %s" (print_errloc !file pos) tag)
   in
   aux decls
 
@@ -498,7 +502,11 @@ and type_record_pat env decls level fields ty pat =
         (type_pat decls level) env
           (try List.assoc name fields
            with Not_found ->
-             failwith (Printf.sprintf "%s not found: %s" (print_errloc !file pat.pos) name)) ty)
+             failwith
+               (Printf.sprintf "%s not found: %s"
+                  (print_errloc !file pat.pos)
+                  name))
+          ty)
       [] fields2
     @ env
   with _ -> failwith "invalid record pattern"
@@ -510,7 +518,10 @@ and type_variant_pat env decls level (tag_name, pat) ty =
   let ty =
     try List.assoc tag_name (fields_of_type variant_ty)
     with Not_found ->
-      failwith (Printf.sprintf "%s not found: %s" (print_errloc !file pat.pos) tag_name)
+      failwith
+        (Printf.sprintf "%s not found: %s"
+           (print_errloc !file pat.pos)
+           tag_name)
   in
   type_pat decls level [] pat ty @ env
 
@@ -548,7 +559,10 @@ and type_expr env decls level expr =
         with Not_found -> (
           try type_prim level (List.assoc s prim_list)
           with Not_found ->
-            failwith (Printf.sprintf "%s not found: %s" (print_errloc !file expr.pos) s))
+            failwith
+              (Printf.sprintf "%s not found: %s"
+                 (print_errloc !file expr.pos)
+                 s))
       in
       ty
   | Econstant cst ->
@@ -607,7 +621,8 @@ and type_expr env decls level expr =
       let prim =
         try List.assoc s prim_list
         with Not_found ->
-          failwith (Printf.sprintf "%s not found: %s" (print_errloc !file expr.pos) s)
+          failwith
+            (Printf.sprintf "%s not found: %s" (print_errloc !file expr.pos) s)
       in
       let fct_ty = type_expr env decls level p in
       let args =
@@ -932,13 +947,15 @@ and type_record_expr env decls level fields expr =
            with Not_found ->
              failwith
                (Printf.sprintf " %s invalid label: %s"
-               (print_errloc !file expr.pos) name))
+                  (print_errloc !file expr.pos)
+                  name))
           ty)
       fields2;
     record_ty
   with _ ->
     failwith
-      (Printf.sprintf " %s invalid record expression" (print_errloc !file expr.pos))
+      (Printf.sprintf " %s invalid record expression"
+         (print_errloc !file expr.pos))
 
 and type_variant_expr env decls level (tag_name, expr) =
   let variant_name = tag_belong_to tag_name decls expr.pos in
@@ -946,7 +963,9 @@ and type_variant_expr env decls level (tag_name, expr) =
   let ty =
     try List.assoc tag_name (fields_of_type variant_ty)
     with Not_found ->
-      failwith (Printf.sprintf " %s invalid tag: %s" tag_name (print_errloc !file expr.pos))
+      failwith
+        (Printf.sprintf " %s invalid tag: %s" tag_name
+           (print_errloc !file expr.pos))
   in
   let ty1 = type_expr env decls level expr in
   unify ty ty1;
