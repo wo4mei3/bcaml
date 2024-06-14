@@ -106,11 +106,11 @@ let mkl n =
   let rec aux i =
     if i < n then i::aux (i+1)
     else [i] in aux 0
-(*
+
 open "test.bc"
 
 let sum = total (mkl 10)
-*)
+
 
 let _ = 
   let rec a b = 3 and c b = a b in c 5

@@ -46,5 +46,3 @@ let _ =
     if y = 0 then 0 else
     x + f (y - 1) in
   printf "%d\n" (f 123)
-
-let 3=4
