@@ -90,7 +90,7 @@ let _ = Some true
 let _ = Some "a"
 
 let () = printf "%d %s\n" 5 "frogs"
-(*
+
 let rec foo n =
   if n = 0 then true else bar (n - 1)
 
@@ -106,7 +106,7 @@ let mkl n =
   let rec aux i =
     if i < n then i::aux (i+1)
     else [i] in aux 0
-
+(*
 open "test.bc"
 
 let sum = total (mkl 10)

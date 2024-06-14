@@ -58,8 +58,9 @@ let rec check_ast env decls = function
           (fun (name, ty) ->
             if free_type_vars notgeneric ty != [] then
               failwith
-                (Printf.sprintf "cannot generalize the type of this variable %s"
-                   name))
+                (Printf.sprintf
+                   "cannot generalize the type of this variable %s %s" name
+                   (show_ty ty)))
           !add_env;
         fnames := fname :: !fnames;
         check_ast (!add_env @ env) (!add_decls @ decls) rest

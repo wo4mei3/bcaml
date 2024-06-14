@@ -87,7 +87,6 @@ let get_pos
       { Lexing.pos_lnum = a2; Lexing.pos_bol = b2; Lexing.pos_cnum = c2; _ } ) =
   ((a1, c1 - b1 + 1), (a2, c2 - b2 + 1))
 
-type loc = (int * int) * (int * int) [@@deriving show]
 type pos = [%import: Lexing.position] [@@deriving show]
 type position = pos * pos [@@deriving show]
 type 'item ast = { ast : 'item; pos : position } [@@deriving show]
@@ -125,10 +124,11 @@ let print_lines filename lines ((a1, b1), (a2, b2)) =
   in
   String.concat "" lines
 
-let print_errloc filename ((a1, b1), (a2, b2)) =
-  let str = print_loc filename ((a1, b1), (a2, b2)) in
+let print_errloc filename pos =
+  let pos = get_pos pos in
+  let str = print_loc filename pos in
   let lines = read_file filename in
-  str ^ print_lines filename lines ((a1, b1), (a2, b2))
+  str ^ print_lines filename lines pos
 
 type expr = expr' ref ast [@@deriving show]
 

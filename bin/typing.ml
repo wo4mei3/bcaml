@@ -413,6 +413,16 @@ let type_prim level = function
       let remain_ty = new_type_var notgeneric in
       Tarrow (Tformat (remain_ty, Tstring), remain_ty)
 
+let unify_pat pat actual_ty expected_ty =
+  try unify actual_ty expected_ty
+  with _ ->
+    failwith
+      (Printf.sprintf
+         "%s This pattern matches values of type %s,\n\
+          but should match values of type %s.\n"
+         (print_errloc !file pat.pos)
+         (pp_ty actual_ty) (pp_ty expected_ty))
+
 let rec type_pat decls level new_env pat ty =
   match !(pat.ast) with
   | Pwild -> ("_", ty) :: new_env
@@ -434,30 +444,30 @@ let rec type_pat decls level new_env pat ty =
         | Cstring _ -> Tstring
         | Cchar _ -> Tchar
       in
-      unify ty cst_ty;
+      unify_pat pat ty cst_ty;
       new_env
   | Ptuple patl ->
       let tyl = List.init (List.length patl) (fun _ -> new_type_var level) in
       unify (Ttuple tyl) ty;
       List.fold_left2 (type_pat decls level) new_env patl tyl
   | Pnil ->
-      unify ty (Tlist (new_type_var level));
+      unify_pat pat ty (Tlist (new_type_var level));
       new_env
   | Pcons (car, cdr) ->
       let ty1 = new_type_var level in
       let ty2 = new_type_var level in
       let new_env = type_pat decls level new_env car ty1 in
       let new_env = type_pat decls level new_env cdr ty2 in
-      unify (Tlist ty1) ty2;
-      unify ty2 ty;
+      unify_pat pat ty2 (Tlist ty1);
+      unify_pat pat ty ty2;
       new_env
   | Pref expr ->
       let ty1 = new_type_var level in
       let new_env = type_pat decls level new_env expr ty1 in
-      unify (Tref ty1) ty;
+      unify_pat pat ty (Tref ty1);
       new_env
   | Punit ->
-      unify Tunit ty;
+      unify_pat pat ty Tunit;
       new_env
   | Ptag ->
       unify ty Ttag;
@@ -466,7 +476,7 @@ let rec type_pat decls level new_env pat ty =
       type_variant_pat new_env decls level (name, pat) ty
   | Pconstraint (pat, expected) ->
       let new_env = type_pat decls level new_env pat ty in
-      unify ty (instantiate level expected);
+      unify_pat pat ty (instantiate level expected);
       new_env
   | Precord fields -> type_record_pat new_env decls level fields ty
 
@@ -496,6 +506,32 @@ and type_variant_pat env decls level (tag_name, pat) ty =
     with Not_found -> failwith ("not found:" ^ tag_name)
   in
   type_pat decls level [] pat ty @ env
+
+and unify_expr expr actual_ty expected_ty =
+  try unify actual_ty expected_ty
+  with _ ->
+    failwith
+      (Printf.sprintf
+         "%s This expression has type %s,\nbut is expected type %s.\n"
+         (print_errloc !file expr.pos)
+         (pp_ty actual_ty) (pp_ty expected_ty))
+
+and function_error level expr ty =
+  failwith
+    (try
+       let param_ty = new_type_var level in
+       let ret_ty = new_type_var level in
+       unify ty (Tarrow (param_ty, ret_ty));
+       Printf.sprintf "%s This function is applied to too many arguments.\n"
+         (print_errloc !file expr.pos)
+     with _ ->
+       Printf.sprintf
+         "%s This expression is not a function, it cannot be applied.\n"
+         (print_errloc !file expr.pos))
+
+and type_expect env decls level expr expected_ty =
+  match !(expr.ast) with
+  | _ -> unify_expr expr (type_expr env decls level expr) expected_ty
 
 and type_expr env decls level expr =
   match !(expr.ast) with
@@ -527,10 +563,11 @@ and type_expr env decls level expr =
       let ty = Tlist (new_type_var level) in
       ty
   | Econs (car, cdr) ->
-      let ty1 = type_expr env decls level car in
-      let ty2 = type_expr env decls level cdr in
-      unify (Tlist ty1) ty2;
-      ty2
+      let ty = type_expr env decls level cdr in
+      let expected_ty = new_type_var level in
+      unify (Tlist expected_ty) ty;
+      type_expect env decls level car expected_ty;
+      ty
   | Elist l ->
       let ty = new_type_var level in
       List.iter (fun expr -> unify ty (type_expr env decls level expr)) l;
@@ -541,14 +578,12 @@ and type_expr env decls level expr =
       let ty = Tref ty in
       ty
   | Ederef e ->
-      let ty1 = new_type_var level in
-      let ty2 = type_expr env decls level e in
-      unify (Tref ty1) ty2;
-      ty1
+      let ty = new_type_var level in
+      type_expect env decls level e (Tref ty);
+      ty
   | Eassign (lhs, rhs) ->
-      let ty1 = type_expr env decls level lhs in
-      let ty2 = type_expr env decls level rhs in
-      unify ty1 (Tref ty2);
+      let ty = type_expr env decls level rhs in
+      type_expect env decls level lhs (Tref ty);
       Tunit
   | Eloc _ ->
       let ty = new_type_var level in
@@ -650,10 +685,11 @@ and type_expr env decls level expr =
       in
       let ty =
         List.fold_left
-          (fun fct_ty arg_ty ->
+          (fun fct_ty_ arg_ty ->
             let param_ty = new_type_var level in
             let ret_ty = new_type_var level in
-            unify fct_ty (Tarrow (param_ty, ret_ty));
+            (try unify fct_ty_ (Tarrow (param_ty, ret_ty))
+             with _ -> function_error level p fct_ty);
             unify arg_ty param_ty;
             ret_ty)
           fct_ty args
@@ -743,12 +779,14 @@ and type_expr env decls level expr =
           p.ast := !((curry p).ast);
           fmt_ty :: List.map (type_expr env decls level) (List.tl args)
       in
+
       let ty =
         List.fold_left
-          (fun fct_ty arg_ty ->
+          (fun fct_ty_ arg_ty ->
             let param_ty = new_type_var level in
             let ret_ty = new_type_var level in
-            unify fct_ty (Tarrow (param_ty, ret_ty));
+            (try unify fct_ty_ (Tarrow (param_ty, ret_ty))
+             with _ -> function_error level p fct_ty);
             unify arg_ty param_ty;
             ret_ty)
           fct_ty args
@@ -758,10 +796,11 @@ and type_expr env decls level expr =
       let fct_ty = type_expr env decls level fct in
       let ty =
         List.fold_left
-          (fun fct_ty arg_ty ->
+          (fun fct_ty_ arg_ty ->
             let param_ty = new_type_var level in
             let ret_ty = new_type_var level in
-            unify fct_ty (Tarrow (param_ty, ret_ty));
+            (try unify fct_ty_ (Tarrow (param_ty, ret_ty))
+             with _ -> function_error level fct fct_ty);
             unify arg_ty param_ty;
             ret_ty)
           fct_ty
@@ -774,7 +813,7 @@ and type_expr env decls level expr =
       let add_env = List.fold_left2 (type_pat decls level) [] patl tyl @ env in
       List.iter2
         (fun ty (_, expr) ->
-          unify ty (type_expr env decls (level + 1) expr);
+          type_expect env decls (level + 1) expr ty;
           if is_simple expr then generalize (level + 1) ty)
         tyl pat_expr;
       let ty = type_expr (add_env @ env) decls level body in
@@ -785,15 +824,15 @@ and type_expr env decls level expr =
       let add_env = List.fold_left2 (type_pat decls level) [] patl tyl @ env in
       List.iter2
         (fun ty (_, expr) ->
-          unify ty (type_expr (add_env @ env) decls (level + 1) expr);
+          type_expect (add_env @ env) decls (level + 1) expr ty;
           if is_simple expr then generalize (level + 1) ty)
         tyl pat_expr;
       let ty = type_expr (add_env @ env) decls level body in
       ty
   | Efix (e, l) ->
       let ty = new_type_var level in
-      unify ty (type_expr env decls level e);
-      List.iter (fun (_, e) -> unify ty (type_expr env decls level e)) l;
+      type_expect env decls level e ty;
+      List.iter (fun (_, e) -> type_expect env decls level e ty) l;
       ty
   | Efunction l -> (
       match l with
@@ -823,39 +862,34 @@ and type_expr env decls level expr =
           let ty = Tarrow (arg_ty, ret_ty) in
           ty)
   | Esequence (expr1, expr2) ->
-      let ty = type_expr env decls level expr1 in
-      unify ty Tunit;
-      let ty = type_expr env decls level expr2 in
-      ty
+      type_expect env decls level expr1 Tunit;
+      type_expr env decls level expr2
   | Econdition (flag, ifso, ifelse) ->
-      let flag = type_expr env decls level flag in
-      unify flag Tbool;
+      type_expect env decls level flag Tbool;
       let ty = type_expr env decls level ifso in
-      unify ty (type_expr env decls level ifelse);
+      type_expect env decls level ifelse ty;
       ty
   | Econstraint (e, expected) ->
-      let ty = type_expr env decls level e in
-      unify ty (instantiate level expected);
+      let ty = instantiate level expected in
+      type_expect env decls level e ty;
       ty
   | Erecord [] -> failwith "empty record fields"
   | Erecord l ->
       let ty = type_record_expr env decls level l in
       ty
   | Erecord_access (e, label) ->
-      let ty = type_expr env decls level e in
       let record_name = label_belong_to label decls in
       let record_ty =
         instantiate level (snd (type_of_decl record_name decls))
       in
-      unify ty (instantiate level record_ty);
+      type_expect env decls level e (instantiate level record_ty);
       let ty =
         try List.assoc label (fields_of_type record_ty)
-        with Not_found -> failwith ("label not found:" ^ label)
+        with Not_found -> failwith (Printf.sprintf "label not found %s" label)
       in
       ty
   | Ewhen (e, body) ->
-      let ty = type_expr env decls level e in
-      unify ty Tbool;
+      type_expect env decls level e Tbool;
       let ty = type_expr env decls level body in
       ty
   | EBlock1 expr -> type_expr env decls level expr
@@ -897,7 +931,7 @@ let type_let env decls pat_expr =
   let add_env = List.fold_left2 (type_pat decls (level + 1)) [] patl tyl in
   List.iter2
     (fun ty (_, expr) ->
-      unify ty (type_expr env decls (level + 1) expr);
+      type_expect env decls (level + 1) expr ty;
       if is_simple expr then generalize level ty)
     tyl pat_expr;
   add_env
@@ -909,7 +943,7 @@ let type_letrec env decls pat_expr =
   let add_env = List.fold_left2 (type_pat decls (level + 1)) [] patl tyl in
   List.iter2
     (fun ty (_, expr) ->
-      unify ty (type_expr (add_env @ env) decls (level + 1) expr);
+      type_expect (add_env @ env) decls (level + 1) expr ty;
       if is_simple expr then generalize level ty)
     tyl pat_expr;
   add_env

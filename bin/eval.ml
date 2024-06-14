@@ -39,7 +39,7 @@ let rec isval expr =
   | Evar _ -> false
   | Econstant _ -> true
   | Eprim Pprintf | Eprim Psprintf -> true
-  | Eprim _ -> false
+  | Eprim _ -> true
   | Etuple l -> List.for_all (fun x -> isval x) l
   | Enil | Econs _ -> false
   | Elist _ -> true
@@ -378,7 +378,7 @@ let rec do_match pat expr =
       List.fold_left
         (fun l p -> l @ do_match (snd p) (List.assoc (fst p) ef))
         [] pf
-  | _ -> failwith (print_errloc !file (get_pos pat.pos))
+  | _ -> failwith (print_errloc !file pat.pos)
 
 and do_matches pat_exprs expr' =
   match pat_exprs with
