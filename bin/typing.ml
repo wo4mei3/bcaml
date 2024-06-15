@@ -341,7 +341,7 @@ let rec curry = function
       }
   | e -> e
 
-let type_format fmt =
+let type_format fmt expr =
   let args = ref 0 in
   let len = String.length fmt in
   let ty_result = new_type_var notgeneric in
@@ -373,7 +373,10 @@ let type_format fmt =
               incr args;
               Tarrow (Tfloat, scan_format (j + 1))
           | 'b' -> Tarrow (Tbool, scan_format (j + 1))
-          | _ -> failwith "bad format letter after %")
+          | _ ->
+              failwith
+                (Printf.sprintf "%s bad format letter after %%"
+                   (print_errloc !file expr.pos)))
       | _ -> scan_format (i + 1)
   in
   (!args, Tformat (scan_format 0, ty_result))
@@ -509,7 +512,9 @@ and type_record_pat env decls level fields ty pat =
           ty)
       [] fields2
     @ env
-  with _ -> failwith "invalid record pattern"
+  with _ ->
+    failwith
+      (Printf.sprintf "%s invalid record pattern" (print_errloc !file pat.pos))
 
 and type_variant_pat env decls level (tag_name, pat) ty =
   let variant_name = tag_belong_to tag_name decls pat.pos in
@@ -673,7 +678,7 @@ and type_expr env decls level expr =
           let fmt = List.hd args in
           let len, fmt_ty =
             match !(fmt.ast) with
-            | Econstant (Cstring fmt) -> type_format fmt
+            | Econstant (Cstring s) -> type_format s fmt
             | _ ->
                 failwith
                   (Printf.sprintf "%s not a string"
@@ -772,7 +777,7 @@ and type_expr env decls level expr =
           let fmt = List.hd args in
           let len, fmt_ty =
             match !(fmt.ast) with
-            | Econstant (Cstring fmt) -> type_format fmt
+            | Econstant (Cstring s) -> type_format s fmt
             | _ ->
                 failwith
                   (Printf.sprintf "%s not a string"

@@ -95,40 +95,14 @@ let file = ref ""
 
 let print_loc file ((a1, b1), (a2, b2)) =
   if a2 > a1 then
-    Printf.sprintf "File \"%s\", lines %d-%d, characters %d-%d:\n" file a1 a2 b1
-      b2
+    Printf.sprintf
+      "File \"%s\", lines %d-%d, characters Ln%d, Col%d - Ln%d, Col%d:\n" file
+      a1 a2 a1 b1 a2 b2
   else Printf.sprintf "File \"%s\", line %d, characters %d-%d:\n" file a1 b1 b2
-
-let read_file filename =
-  let lines = ref [] in
-  if filename = "" then []
-  else
-    let chan = open_in filename in
-    try
-      while true do
-        lines := input_line chan :: !lines
-      done;
-      !lines
-    with End_of_file ->
-      close_in chan;
-      List.rev !lines
-
-let print_lines filename lines ((a1, b1), (a2, b2)) =
-  ignore (b1, b2);
-  let lines =
-    List.map
-      (fun a -> List.nth lines a)
-      (List.init
-         (if filename = "" then a2 - a1 else a2 - a1 + 1)
-         (fun a -> a1 + a - 1))
-  in
-  String.concat "" lines
 
 let print_errloc filename pos =
   let pos = get_pos pos in
-  let str = print_loc filename pos in
-  let lines = read_file filename in
-  str ^ print_lines filename lines pos
+  print_loc filename pos
 
 type expr = expr' ref ast [@@deriving show]
 
