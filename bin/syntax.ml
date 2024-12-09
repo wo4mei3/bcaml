@@ -162,20 +162,23 @@ and type_decl' =
   | Dabbrev of string * ty list * ty
 [@@deriving show]
 
-and def = def' ast
+and mod_ = mod' ast
 
-and def' =
-  | Defexpr of expr
-  | Deflet of (pat * expr) list
-  | Defletrec of (pat * expr) list
-  | Deftype of type_decl list
-  | Defopen of string
+and mod' =
+  | Modexpr of expr
+  | Modlet of (pat * expr) list
+  | Modletrec of (pat * expr) list
+  | Modtype of (string * type_decl) list
+  | Modopen of string
 [@@deriving show]
 
 and matches = (pat * expr) list [@@deriving show]
-and def_list = def list [@@deriving show]
+and def_list = mod_ list [@@deriving show]
 
-type tyenv = (string * ty) list [@@deriving show]
+type sema_sig = Sigval of (string * ty) | Sigtype of (string * type_decl)
+[@@deriving show]
+
+type tyenv = sema_sig list [@@deriving show]
 
 let get_constant = function
   | Econstant cst -> cst

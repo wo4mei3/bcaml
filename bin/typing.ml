@@ -203,15 +203,15 @@ let rec subst_ty t id ty =
 
 let rec type_of_decl name decls =
   let rec aux = function
-    | { ast = Drecord (n, tyl, fields); _ } :: _ when n = name -> (
+    | (_, { ast = Drecord (n, tyl, fields); _ }) :: _ when n = name -> (
         match instantiate 1 (Trecord (n, tyl, fields)) with
         | Trecord (_, tyl, _) as ty -> (tyl, ty)
         | _ -> failwith "type_of_decl")
-    | { ast = Dvariant (n, tyl, fields); _ } :: _ when n = name -> (
+    | (_, { ast = Dvariant (n, tyl, fields); _ }) :: _ when n = name -> (
         match instantiate 1 (Tvariant (n, tyl, fields)) with
         | Tvariant (_, tyl, _) as ty -> (tyl, ty)
         | _ -> failwith "type_of_decl")
-    | { ast = Dabbrev (n, tyl, ty); _ } :: _ when n = name -> (
+    | (_, { ast = Dabbrev (n, tyl, ty); _ }) :: _ when n = name -> (
         match instantiate 1 (Trecord (n, tyl, [ ("temp", ty) ])) with
         | Trecord (_, tyl, [ ("temp", ty) ]) -> (tyl, ty)
         | _ -> failwith "type_of_decl")
@@ -254,7 +254,7 @@ let fields_of_type ty =
 
 let label_belong_to label decls pos =
   let rec aux = function
-    | { ast = Drecord (name, _, fields); _ } :: _
+    | (_, { ast = Drecord (name, _, fields); _ }) :: _
       when List.mem_assoc label fields ->
         name
     | _ :: rest -> aux rest
@@ -266,7 +266,7 @@ let label_belong_to label decls pos =
 
 let tag_belong_to tag decls pos =
   let rec aux = function
-    | { ast = Dvariant (name, _, fields); _ } :: _
+    | (_, { ast = Dvariant (name, _, fields); _ }) :: _
       when List.mem_assoc tag fields ->
         name
     | _ :: rest -> aux rest

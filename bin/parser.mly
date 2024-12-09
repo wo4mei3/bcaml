@@ -4,7 +4,7 @@
   let make_expr expr' i j = {ast = ref expr' ; pos = make_loc i j}
   let make_pat pat' i j = {ast = ref pat' ; pos = make_loc i j}
   let make_decl decl' i j = {ast = decl' ; pos = make_loc i j}
-  let make_def def' i j = {ast = def' ; pos = make_loc i j}
+  let make_def mod' i j = {ast = mod' ; pos = make_loc i j}
 %}
 %token LPAREN "(" RPAREN ")" LBRACK "[" RBRACK "]" LBRACE "{" RBRACE "}"
 %token COLON ":" COMMA "," SEMI ";" SEMISEMI ";;" CONS "::" QUOTE "'" DOT "."
@@ -54,23 +54,23 @@
 %right prec_uminus
 %right REF "!" LNOT NOT
 
-%start<def list> top
-%start<def list> def
+%start<mod_ list> top
+%start<mod_ list> mod_
 
 %%
 
 top             : list(def_) EOF                     { $1 }
 
-def             : list(def_) SEMISEMI                { $1 }
-                | expr SEMISEMI                      { [make_def(Defexpr $1) ($startpos($1)) ($endpos($2))] }
+mod_            : list(def_) SEMISEMI                { $1 }
+                | expr SEMISEMI                      { [make_def(Modexpr $1) ($startpos($1)) ($endpos($2))] }
 
 def_            : TYPE separated_nonempty_list(AND, ty_def)
-                                                    { make_def(Deftype $2)($startpos($1)) ($endpos($2)) }
+                                                    { make_def(Modtype $2)($startpos($1)) ($endpos($2)) }
                 | LET separated_nonempty_list(AND, let_def)
-                                                    { make_def(Deflet $2) ($startpos($1)) ($endpos($2)) }
+                                                    { make_def(Modlet $2) ($startpos($1)) ($endpos($2)) }
                 | LET REC separated_nonempty_list(AND, let_rec_def)
-                                                    { make_def(Defletrec $3) ($startpos($1)) ($endpos($3)) }
-                | OPEN STRING                       { make_def(Defopen $2) ($startpos($1)) ($endpos($2)) }                                         
+                                                    { make_def(Modletrec $3) ($startpos($1)) ($endpos($3)) }
+                | OPEN STRING                       { make_def(Modopen $2) ($startpos($1)) ($endpos($2)) }                                         
 
 expr            : simple_expr                       { $1 }
                 | simple_expr_ simple_expr+         { make_expr(Eapply($1,$2)) ($startpos($1)) ($endpos($2)) }
@@ -217,10 +217,10 @@ params          :                                   { [] }
                                                     { $2 }
 
 ty_def          : params tyname "=" "{" separated_nonempty_list(";", separated_pair(field, ":", ty)) "}"
-                                                    { make_decl(Drecord($2,$1,$5)) ($startpos($1)) ($endpos($6)) }
+                                                    { ($2, make_decl(Drecord($2,$1,$5)) ($startpos($1)) ($endpos($6))) }
                 | params tyname "=" nonempty_list("|" sum_case { $2 })
-                                                    { make_decl(Dvariant($2,$1,$4)) ($startpos($1)) ($endpos($4)) }
-                | params tyname "=" ty              { make_decl(Dabbrev($2,$1,$4)) ($startpos($1)) ($endpos($4)) }
+                                                    { ($2, make_decl(Dvariant($2,$1,$4)) ($startpos($1)) ($endpos($4))) }
+                | params tyname "=" ty              { ($2, make_decl(Dabbrev($2,$1,$4)) ($startpos($1)) ($endpos($4))) }
 
 ty              : simple_ty                         { $1 }
                 | ty "->" ty                        { Tarrow($1,$3) }

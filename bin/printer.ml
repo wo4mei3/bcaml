@@ -176,11 +176,6 @@ let pp_decl decl =
       ^ ")" ^ " " ^ n ^ " = " ^ pp_ty ty
   | _ -> failwith "pp_tydecl"
 
-let pp_decls decls =
-  let ret = List.fold_left (fun s decl -> s ^ "\n" ^ pp_decl decl) "" decls in
-  reset_tvar_name ();
-  ret
-
 let pp_cst = function
   | Cint i -> string_of_int i
   | Cbool b -> string_of_bool b
@@ -188,7 +183,7 @@ let pp_cst = function
   | Cchar c -> Printf.sprintf "'%C'" c
   | Cstring s -> Printf.sprintf "\"%s\"" s
 
-let pp_exp expr =
+let pp_val expr =
   let rec aux expr n =
     if n > 10 then "..."
     else
@@ -226,3 +221,17 @@ let pp_exp expr =
       | _ -> failwith "pp_exp"
   in
   aux expr 0
+
+let pp_env env =
+  let ret =
+    List.fold_left
+      (fun s sema_sig ->
+        s ^ "\n"
+        ^
+        match sema_sig with
+        | Sigval (n, ty) -> "val " ^ n ^ " : " ^ pp_ty ty
+        | Sigtype (_, decl) -> pp_decl decl)
+      "" env
+  in
+  reset_tvar_name ();
+  ret

@@ -10,44 +10,45 @@ let fnames = ref []
 
 let if_debug f =
   if !debug then (
-    parser := Parser.def;
+    parser := Parser.mod_;
     f ())
   else parser := Parser.top
 
 let rec check_ast env decls = function
-  | { ast = Deftype decl; _ } :: rest ->
+  | { ast = Modtype decl; _ } :: rest ->
       check_valid_decl decl;
       check_recursive_abbrev decl;
       check_recursive_def decl;
-      if_debug (fun () -> print_endline (pp_decls decl));
+      let sema_sig = List.map (fun decl -> Sigtype decl) decl in
+      if_debug (fun () -> print_endline (pp_env sema_sig));
       check_ast env (decl @ decls) rest
-  | { ast = Defexpr expr; _ } :: rest ->
+  | { ast = Modexpr expr; _ } :: rest ->
       let ty = type_expr env decls 0 expr in
       let expr = eval expr in
       if_debug (fun () ->
-          print_endline ("- : " ^ pp_ty ty ^ " = " ^ pp_exp expr));
+          print_endline ("- : " ^ pp_ty ty ^ " = " ^ pp_val expr));
       check_ast env decls rest
-  | { ast = Deflet l; _ } :: rest ->
+  | { ast = Modlet l; _ } :: rest ->
       let add_env = type_let env decls l in
       List.iter
         (fun (name, expr) ->
           if_debug (fun () ->
               print_endline
-                ("val " ^ name ^ " = " ^ pp_exp expr ^ " : "
+                ("val " ^ name ^ " = " ^ pp_val expr ^ " : "
                 ^ pp_ty (List.assoc name add_env))))
         (eval_let l);
       check_ast (add_env @ env) decls rest
-  | { ast = Defletrec l; _ } :: rest ->
+  | { ast = Modletrec l; _ } :: rest ->
       let add_env = type_letrec env decls l in
       List.iter
         (fun (name, expr) ->
           if_debug (fun () ->
               print_endline
-                ("val " ^ name ^ " = " ^ pp_exp expr ^ " : "
+                ("val " ^ name ^ " = " ^ pp_val expr ^ " : "
                 ^ pp_ty (List.assoc name add_env))))
         (eval_letrec l);
       check_ast (add_env @ env) decls rest
-  | { ast = Defopen fname; _ } :: rest ->
+  | { ast = Modopen fname; _ } :: rest ->
       let fname = Filename.basename fname in
       if List.mem fname !fnames then check_ast env decls rest
       else
