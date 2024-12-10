@@ -21,7 +21,7 @@ let rec check_ast env = function
       check_recursive_abbrev add_env;
       check_recursive_def add_env;
       if_debug (fun () -> print_endline (pp_env add_env));
-      check_ast (env @ add_env) rest
+      check_ast (add_env @ env) rest
   | { ast = Modexpr expr; _ } :: rest ->
       let ty = type_expr env 0 expr in
       let expr = eval expr in
@@ -37,7 +37,7 @@ let rec check_ast env = function
                 ("val " ^ name ^ " = " ^ pp_val expr ^ " : "
                 ^ pp_ty (Option.get (find_val name add_env)))))
         (eval_let l);
-      check_ast (add_env @ env) rest
+      check_ast add_env rest
   | { ast = Modletrec l; _ } :: rest ->
       let add_env = type_letrec env l in
       List.iter
@@ -47,7 +47,7 @@ let rec check_ast env = function
                 ("val " ^ name ^ " = " ^ pp_val expr ^ " : "
                 ^ pp_ty (Option.get (find_val name add_env)))))
         (eval_letrec l);
-      check_ast (add_env @ env) rest
+      check_ast add_env rest
   | { ast = Modopen fname; _ } :: rest ->
       let fname = Filename.basename fname in
       if List.mem fname !fnames then check_ast env rest

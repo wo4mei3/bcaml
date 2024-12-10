@@ -258,7 +258,7 @@ let label_belong_to env label pos =
       when List.mem_assoc label fields ->
         name
     | _ :: rest -> aux rest
-    | _ ->
+    | [] ->
         failwith
           (Printf.sprintf "%s invalid label %s" (print_errloc !file pos) label)
   in
@@ -270,7 +270,7 @@ let tag_belong_to env tag pos =
       when List.mem_assoc tag fields ->
         name
     | _ :: rest -> aux rest
-    | _ ->
+    | [] ->
         failwith
           (Printf.sprintf "%s invalid tag %s" (print_errloc !file pos) tag)
   in
@@ -430,12 +430,12 @@ let unify_pat pat actual_ty expected_ty =
          (print_errloc !file pat.pos)
          (pp_ty actual_ty) (pp_ty expected_ty))
 
-let rec type_pat env level pat ty =
+let rec type_pat env add_env level pat ty =
   match !(pat.ast) with
-  | Pwild -> Sigval ("_", ty) :: env
+  | Pwild -> Sigval ("_", ty) :: add_env
   | Pvar s -> (
-      match find_val s env with
-      | None -> Sigval (s, ty) :: env
+      match find_val s add_env with
+      | None -> Sigval (s, ty) :: add_env
       | Some _ ->
           failwith
             (Printf.sprintf "%s a variable found more than twice: %s"
@@ -443,8 +443,8 @@ let rec type_pat env level pat ty =
                s))
   | Pparams _ -> failwith "type_pat"
   | Palias (pat, s) -> (
-      match find_val s env with
-      | None -> type_pat (Sigval (s, ty) :: env) level pat ty
+      match find_val s add_env with
+      | None -> type_pat env (Sigval (s, ty) :: add_env) level pat ty
       | Some _ ->
           failwith
             (Printf.sprintf "%s a variable found more than twice: %s"
@@ -464,37 +464,39 @@ let rec type_pat env level pat ty =
   | Ptuple patl ->
       let tyl = List.init (List.length patl) (fun _ -> new_type_var level) in
       unify (Ttuple tyl) ty;
-      List.fold_left2 (fun env -> type_pat env level) env patl tyl
+      List.fold_left2
+        (fun add_env -> type_pat env add_env level)
+        add_env patl tyl
   | Pnil ->
       unify_pat pat ty (Tlist (new_type_var level));
       env
   | Pcons (car, cdr) ->
       let ty1 = new_type_var level in
       let ty2 = new_type_var level in
-      let new_env = type_pat env level car ty1 in
-      let new_env = type_pat new_env level cdr ty2 in
+      let add_env = type_pat env add_env level car ty1 in
+      let add_env = type_pat env add_env level cdr ty2 in
       unify_pat pat ty2 (Tlist ty1);
       unify_pat pat ty ty2;
-      new_env
+      add_env
   | Pref expr ->
       let ty1 = new_type_var level in
-      let new_env = type_pat env level expr ty1 in
+      let add_env = type_pat env add_env level expr ty1 in
       unify_pat pat ty (Tref ty1);
-      new_env
+      add_env
   | Punit ->
       unify_pat pat ty Tunit;
-      env
+      add_env
   | Ptag ->
       unify ty Ttag;
-      env
-  | Pconstruct (name, pat) -> type_variant_pat env level (name, pat) ty
+      add_env
+  | Pconstruct (name, pat) -> type_variant_pat env add_env level (name, pat) ty
   | Pconstraint (pat, expected) ->
-      let new_env = type_pat env level pat ty in
+      let add_env = type_pat env add_env level pat ty in
       unify_pat pat ty (instantiate level expected);
-      new_env
-  | Precord fields -> type_record_pat env level fields ty pat
+      add_env
+  | Precord fields -> type_record_pat env add_env level fields ty pat
 
-and type_record_pat env level fields ty pat =
+and type_record_pat env add_env level fields ty pat =
   let first_label = fst (List.hd fields) in
   let record_name = label_belong_to env first_label pat.pos in
   let record_ty = instantiate level (snd (type_of_decl env record_name)) in
@@ -502,8 +504,8 @@ and type_record_pat env level fields ty pat =
   unify record_ty ty;
   try
     List.fold_left
-      (fun env (name, ty) ->
-        (type_pat env level)
+      (fun add_env (name, ty) ->
+        (type_pat env add_env level)
           (try List.assoc name fields
            with Not_found ->
              failwith
@@ -511,13 +513,12 @@ and type_record_pat env level fields ty pat =
                   (print_errloc !file pat.pos)
                   name))
           ty)
-      [] fields2
-    @ env
+      add_env fields2
   with _ ->
     failwith
       (Printf.sprintf "%s invalid record pattern" (print_errloc !file pat.pos))
 
-and type_variant_pat env level (tag_name, pat) ty =
+and type_variant_pat env add_env level (tag_name, pat) ty =
   let variant_name = tag_belong_to env tag_name pat.pos in
   let _, variant_ty = type_of_decl env variant_name in
   unify ty (instantiate level variant_ty);
@@ -529,7 +530,7 @@ and type_variant_pat env level (tag_name, pat) ty =
            (print_errloc !file pat.pos)
            tag_name)
   in
-  type_pat [] level pat ty @ env
+  type_pat env add_env level pat ty
 
 and unify_expr expr actual_ty expected_ty =
   try unify actual_ty expected_ty
@@ -562,9 +563,9 @@ and type_expr env level expr =
   | Evar s ->
       let ty =
         try instantiate level (Option.get (find_val s env))
-        with Not_found -> (
+        with _ -> (
           try type_prim level (List.assoc s prim_list)
-          with Not_found ->
+          with _ ->
             failwith
               (Printf.sprintf "%s not found: %s"
                  (print_errloc !file expr.pos)
@@ -847,7 +848,7 @@ and type_expr env level expr =
       let patl = List.map (fun (pat, _) -> pat) pat_expr in
       let tyl = List.map (fun (_, _) -> new_type_var level) pat_expr in
       let add_env =
-        List.fold_left2 (fun env -> type_pat env level) [] patl tyl @ env
+        List.fold_left2 (fun add_env -> type_pat env add_env level) [] patl tyl
       in
       List.iter2
         (fun ty (_, expr) ->
@@ -860,7 +861,7 @@ and type_expr env level expr =
       let patl = List.map (fun (pat, _) -> pat) pat_expr in
       let tyl = List.map (fun (_, _) -> new_type_var level) pat_expr in
       let add_env =
-        List.fold_left2 (fun env -> type_pat env level) [] patl tyl @ env
+        List.fold_left2 (fun add_env -> type_pat env add_env level) [] patl tyl
       in
       List.iter2
         (fun ty (_, expr) ->
@@ -882,9 +883,11 @@ and type_expr env level expr =
       | [ ({ ast = { contents = Pparams patl }; _ }, e) ] ->
           let tyl = List.map (fun _ -> new_type_var level) patl in
           let add_env =
-            List.fold_left2 (fun env -> type_pat env level) [] patl tyl @ env
+            List.fold_left2
+              (fun add_env -> type_pat env add_env level)
+              [] patl tyl
           in
-          let ret_ty = type_expr add_env level e in
+          let ret_ty = type_expr (add_env @ env) level e in
           let ty =
             List.fold_left
               (fun ret_ty arg_ty -> Tarrow (arg_ty, ret_ty))
@@ -897,7 +900,7 @@ and type_expr env level expr =
           let ret_ty = new_type_var level in
           List.iter
             (fun (pat, e) ->
-              let add_env = type_pat [] level pat arg_ty in
+              let add_env = type_pat env [] level pat arg_ty in
               let ty = type_expr (add_env @ env) level e in
               unify ty ret_ty)
             pat_expr;
@@ -982,25 +985,29 @@ let type_let env pat_expr =
   let patl = List.map (fun (pat, _) -> pat) pat_expr in
   let tyl = List.map (fun (_, _) -> new_type_var (level + 1)) pat_expr in
   let add_env =
-    List.fold_left2 (fun env -> type_pat env (level + 1)) [] patl tyl
+    List.fold_left2
+      (fun add_env -> type_pat env add_env (level + 1))
+      [] patl tyl
   in
   List.iter2
     (fun ty (_, expr) ->
       type_expect env (level + 1) expr ty;
       if is_simple expr then generalize level ty)
     tyl pat_expr;
-  add_env
+  add_env @ env
 
 let type_letrec env pat_expr =
   let level = 0 in
   let patl = List.map (fun (pat, _) -> pat) pat_expr in
   let tyl = List.map (fun (_, _) -> new_type_var (level + 1)) pat_expr in
   let add_env =
-    List.fold_left2 (fun env -> type_pat env (level + 1)) [] patl tyl
+    List.fold_left2
+      (fun add_env -> type_pat env add_env (level + 1))
+      [] patl tyl
   in
   List.iter2
     (fun ty (_, expr) ->
       type_expect (add_env @ env) (level + 1) expr ty;
       if is_simple expr then generalize level ty)
     tyl pat_expr;
-  add_env
+  add_env @ env
