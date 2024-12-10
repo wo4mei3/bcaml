@@ -14,62 +14,64 @@ let if_debug f =
     f ())
   else parser := Parser.top
 
-let rec check_ast env decls = function
+let rec check_ast env = function
   | { ast = Modtype decl; _ } :: rest ->
-      check_valid_decl decl;
-      check_recursive_abbrev decl;
-      check_recursive_def decl;
-      let sema_sig = List.map (fun decl -> Sigtype decl) decl in
-      if_debug (fun () -> print_endline (pp_env sema_sig));
-      check_ast env (decl @ decls) rest
+      let add_env = List.map (fun decl -> Sigtype decl) decl in
+      check_valid_decl add_env;
+      check_recursive_abbrev add_env;
+      check_recursive_def add_env;
+      if_debug (fun () -> print_endline (pp_env add_env));
+      check_ast (env @ add_env) rest
   | { ast = Modexpr expr; _ } :: rest ->
-      let ty = type_expr env decls 0 expr in
+      let ty = type_expr env 0 expr in
       let expr = eval expr in
       if_debug (fun () ->
           print_endline ("- : " ^ pp_ty ty ^ " = " ^ pp_val expr));
-      check_ast env decls rest
+      check_ast env rest
   | { ast = Modlet l; _ } :: rest ->
-      let add_env = type_let env decls l in
+      let add_env = type_let env l in
       List.iter
         (fun (name, expr) ->
           if_debug (fun () ->
               print_endline
                 ("val " ^ name ^ " = " ^ pp_val expr ^ " : "
-                ^ pp_ty (List.assoc name add_env))))
+                ^ pp_ty (Option.get (find_val name add_env)))))
         (eval_let l);
-      check_ast (add_env @ env) decls rest
+      check_ast (add_env @ env) rest
   | { ast = Modletrec l; _ } :: rest ->
-      let add_env = type_letrec env decls l in
+      let add_env = type_letrec env l in
       List.iter
         (fun (name, expr) ->
           if_debug (fun () ->
               print_endline
                 ("val " ^ name ^ " = " ^ pp_val expr ^ " : "
-                ^ pp_ty (List.assoc name add_env))))
+                ^ pp_ty (Option.get (find_val name add_env)))))
         (eval_letrec l);
-      check_ast (add_env @ env) decls rest
+      check_ast (add_env @ env) rest
   | { ast = Modopen fname; _ } :: rest ->
       let fname = Filename.basename fname in
-      if List.mem fname !fnames then check_ast env decls rest
+      if List.mem fname !fnames then check_ast env rest
       else
-        let add_env, add_decls = (ref [], ref []) in
+        let add_env = ref [] in
         debug := false;
-        do_interp fname (open_file fname) add_env add_decls;
+        do_interp fname (open_file fname) add_env;
         List.iter
-          (fun (name, ty) ->
-            if free_type_vars notgeneric ty != [] then
-              failwith
-                (Printf.sprintf
-                   "cannot generalize the type of this variable %s %s" name
-                   (show_ty ty)))
+          (function
+            | Sigtype _ -> ()
+            | Sigval (name, ty) ->
+                if free_type_vars notgeneric ty != [] then
+                  failwith
+                    (Printf.sprintf
+                       "cannot generalize the type of this variable %s %s" name
+                       (show_ty ty)))
           !add_env;
         fnames := fname :: !fnames;
-        check_ast (!add_env @ env) (!add_decls @ decls) rest
-  | [] -> (env, decls)
+        check_ast (!add_env @ env) rest
+  | [] -> env
 
 and interp env defs = check_ast env defs
 
-and do_interp fname inchan env decls =
+and do_interp fname inchan env =
   file := fname;
   try
     if_debug (fun () ->
@@ -77,9 +79,8 @@ and do_interp fname inchan env decls =
         flush stdout);
     let filebuf = Lexing.from_channel inchan in
     let ast = !parser Lexer.token filebuf in
-    let e, d = interp !env !decls ast in
-    env := e;
-    decls := d
+    let e = interp !env ast in
+    env := e
   with
   | InterpreterError msg -> print_endline ("InterpreterError " ^ msg)
   | Failure msg -> print_endline msg
@@ -95,18 +96,17 @@ let () =
   let argc = Array.length Sys.argv in
   if argc = 1 then (
     let env = ref [] in
-    let decls = ref [] in
     print_endline "        BCaml a bear's interpreter of caml language";
     print_endline "";
     print_endline "";
     while true do
       debug := true;
-      do_interp "" stdin env decls
+      do_interp "" stdin env
     done)
   else if argc = 2 then (
     let fname = Sys.argv.(1) in
     debug := false;
-    ignore (do_interp fname (open_file fname) (ref []) (ref [])))
+    do_interp fname (open_file fname) (ref []))
   else (
     Format.printf "Usage: ./bcaml [filename]\n";
     exit (-1))

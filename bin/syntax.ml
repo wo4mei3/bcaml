@@ -180,6 +180,16 @@ type sema_sig = Sigval of (string * ty) | Sigtype of (string * type_decl)
 
 type tyenv = sema_sig list [@@deriving show]
 
+let rec find_val n = function
+  | Sigval (name, ty) :: _ when n = name -> Some ty
+  | _ :: xs -> find_val n xs
+  | [] -> None
+
+let rec find_type n = function
+  | Sigtype (name, decl) :: _ when n = name -> Some decl
+  | _ :: xs -> find_type n xs
+  | [] -> None
+
 let get_constant = function
   | Econstant cst -> cst
   | _ -> failwith "get_constant"
