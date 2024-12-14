@@ -168,8 +168,9 @@ and sig_expr' =
   | Svar of string
   | Sfunctor of (string * sig_expr) * sig_expr
   | Swith of ty list
-  | Sval of ty
-  | Stype of type_decl
+  | Sval of string * ty
+  | Stype of (string * type_decl) list
+  | Sstruct of sig_expr list
   | Smodule of string * sig_expr
   | Ssig of string * sig_expr
   | Sinclude of string
@@ -185,9 +186,10 @@ and mod_expr' =
   | Mvar of string
   | Maccess of mod_expr * string
   | Mfunctor of (string * sig_expr) * mod_expr
-  | Mapply of mod_expr * mod_expr
+  | Mapply of mod_expr * mod_expr list
   | Mseal of mod_expr * sig_expr
-  | Mmodule of (string * mod_expr) list
+  | Mstruct of mod_expr list
+  | Mmodule of string * mod_expr
   | Msig of (string * sig_expr)
   | Mopen of string
 [@@deriving show]

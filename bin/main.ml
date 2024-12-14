@@ -10,7 +10,7 @@ let fnames = ref []
 
 let if_debug f =
   if !debug then (
-    parser := Parser.mod_expr;
+    parser := Parser.repl;
     f ())
   else parser := Parser.top
 

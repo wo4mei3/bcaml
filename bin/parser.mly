@@ -18,7 +18,7 @@
 %token <float> FLOAT
 %token TYPE ARROW "->" OF
 %token MATCH WITH FUNCTION
-%token LET REC AND IN
+%token LET REC AND IN VAL STRUCT SIG FUNCTOR MODULE SIGNATURE INCLUDE
 %token FUN BAR "|" BARBAR "||"
 %token IF THEN ELSE WHEN
 %token REF DEREF "!" ASSIGN ":="
@@ -55,13 +55,13 @@
 %right REF "!" LNOT NOT
 
 %start<mod_expr list> top
-%start<mod_expr list> mod_expr
+%start<mod_expr list> repl
 
 %%
 
 top             : list(def_) EOF                     { $1 }
 
-mod_expr        : list(def_) SEMISEMI                { $1 }
+repl            : list(def_) SEMISEMI                { $1 }
                 | expr SEMISEMI                      { [make_def(Mexpr $1) ($startpos($1)) ($endpos($2))] }
 
 def_            : TYPE separated_nonempty_list(AND, ty_def)
@@ -71,6 +71,31 @@ def_            : TYPE separated_nonempty_list(AND, ty_def)
                 | LET REC separated_nonempty_list(AND, let_rec_def)
                                                     { make_def(Mletrec $3) ($startpos($1)) ($endpos($3)) }
                 | OPEN STRING                       { make_def(Mopen $2) ($startpos($1)) ($endpos($2)) }                                         
+                | MODULE UID "=" mod_expr           { make_def(Mmodule($2,$4)) ($startpos($1)) ($endpos($2)) }  
+                | MODULE UID COLON sig_expr "=" mod_expr 
+                { make_def(Mmodule($2,make_def(Mseal($6, $4)) ($startpos($4)) ($endpos($6)))) ($startpos($1)) ($endpos($6)) }  
+                | SIGNATURE UID "=" sig_expr        { make_def(Msig($2,$4)) ($startpos($1)) ($endpos($2)) }  
+
+sig_def         : VAL LID COLON ty                  { make_def(Sval($2,$4)) ($startpos($1)) ($endpos($4)) }
+                | TYPE separated_nonempty_list(AND, ty_def)
+                                                    { make_def(Stype $2)($startpos($1)) ($endpos($2)) }
+                | MODULE UID ":" sig_expr           { make_def(Smodule($2,$4)) ($startpos($1)) ($endpos($2)) }  
+                | SIGNATURE UID "=" sig_expr        { make_def(Ssig($2,$4)) ($startpos($1)) ($endpos($2)) }  
+                | INCLUDE STRING                    { make_def(Sinclude $2) ($startpos($1)) ($endpos($2)) }    
+
+sig_expr        : UID                               { make_def(Svar $1) ($startpos($1)) ($endpos($1))  }
+                | SIG list(sig_def) END             { make_def(Sstruct $2) ($startpos($1)) ($endpos($3))  }
+                | LPAREN UID COLON sig_expr RPAREN sig_expr  { make_def(Sfunctor(($2,$4),$6)) ($startpos($1)) ($endpos($6))  }
+
+mod_expr        : mod_simple_expr                   { $1 }
+                | mod_simple_expr mod_simple_expr+  { make_def(Mapply($1, $2)) ($startpos($1)) ($endpos($2)) }
+                | FUNCTOR LPAREN LID COLON sig_expr RPAREN  "->"  mod_expr  
+                    { make_def(Mfunctor(($3,$5), $8)) ($startpos($1)) ($endpos($8)) }
+
+mod_simple_expr : UID                               { make_def(Mvar $1) ($startpos($1)) ($endpos($1)) }
+                | LPAREN mod_expr RPAREN            { make_def($2.ast) ($startpos($1)) ($endpos($3)) }
+                | STRUCT list(def_) END             { make_def(Mstruct $2) ($startpos($1)) ($endpos($3)) }
+                | mod_simple_expr "." LID           { make_def(Maccess($1, $3)) ($startpos($1)) ($endpos($3)) }
 
 expr            : simple_expr                       { $1 }
                 | simple_expr_ simple_expr+         { make_expr(Eapply($1,$2)) ($startpos($1)) ($endpos($2)) }

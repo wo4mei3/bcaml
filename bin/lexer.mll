@@ -62,7 +62,6 @@ rule token = parse
 | "," { COMMA }
 | ":" { COLON }
 | "." { DOT }
-
 | "=" { EQ }
 | "->" { ARROW }
 | "!" { DEREF }
@@ -100,11 +99,14 @@ rule token = parse
 | ">" { GT }
 | "<=" { LE }
 | ">=" { GE }
-
 | "not" { NOT }
-
-
 | "_" { WILD }
+| "val"  { VAL }
+| "module" { MODULE }
+| "signature" { SIGNATURE }
+| "functor"  { FUNCTOR }
+| "struct"  { STRUCT }
+| "sig"  { SIG }
 | "and" { AND }
 | "begin" { BEGIN }
 | "end" { END }
@@ -115,6 +117,7 @@ rule token = parse
 | "if" { IF }
 | "in" { IN }
 | "open" { OPEN }
+| "include"  { INCLUDE }
 | "let" { LET }
 | "of" { OF }
 | "rec" { REC }
