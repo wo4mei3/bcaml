@@ -10,25 +10,25 @@ let fnames = ref []
 
 let if_debug f =
   if !debug then (
-    parser := Parser.mod_;
+    parser := Parser.mod_expr;
     f ())
   else parser := Parser.top
 
 let rec check_ast env = function
-  | { ast = Modtype decl; _ } :: rest ->
+  | { ast = Mtype decl; _ } :: rest ->
       let add_env = List.map (fun decl -> Sigtype decl) decl in
       check_valid_decl add_env;
       check_recursive_abbrev add_env;
       check_recursive_def add_env;
       if_debug (fun () -> print_endline (pp_env add_env));
       check_ast (add_env @ env) rest
-  | { ast = Modexpr expr; _ } :: rest ->
+  | { ast = Mexpr expr; _ } :: rest ->
       let ty = type_expr env 0 expr in
       let expr = eval expr in
       if_debug (fun () ->
           print_endline ("- : " ^ pp_ty ty ^ " = " ^ pp_val expr));
       check_ast env rest
-  | { ast = Modlet l; _ } :: rest ->
+  | { ast = Mlet l; _ } :: rest ->
       let add_env = type_let env l in
       List.iter
         (fun (name, expr) ->
@@ -38,7 +38,7 @@ let rec check_ast env = function
                 ^ pp_ty (Option.get (find_val name add_env)))))
         (eval_let l);
       check_ast add_env rest
-  | { ast = Modletrec l; _ } :: rest ->
+  | { ast = Mletrec l; _ } :: rest ->
       let add_env = type_letrec env l in
       List.iter
         (fun (name, expr) ->
@@ -48,7 +48,7 @@ let rec check_ast env = function
                 ^ pp_ty (Option.get (find_val name add_env)))))
         (eval_letrec l);
       check_ast add_env rest
-  | { ast = Modopen fname; _ } :: rest ->
+  | { ast = Mopen fname; _ } :: rest ->
       let fname = Filename.basename fname in
       if List.mem fname !fnames then check_ast env rest
       else
@@ -67,7 +67,7 @@ let rec check_ast env = function
           !add_env;
         fnames := fname :: !fnames;
         check_ast (!add_env @ env) rest
-  | [] -> env
+  | _ -> env
 
 and interp env defs = check_ast env defs
 

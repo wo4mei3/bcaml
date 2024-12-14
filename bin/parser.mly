@@ -54,23 +54,23 @@
 %right prec_uminus
 %right REF "!" LNOT NOT
 
-%start<mod_ list> top
-%start<mod_ list> mod_
+%start<mod_expr list> top
+%start<mod_expr list> mod_expr
 
 %%
 
 top             : list(def_) EOF                     { $1 }
 
-mod_            : list(def_) SEMISEMI                { $1 }
-                | expr SEMISEMI                      { [make_def(Modexpr $1) ($startpos($1)) ($endpos($2))] }
+mod_expr        : list(def_) SEMISEMI                { $1 }
+                | expr SEMISEMI                      { [make_def(Mexpr $1) ($startpos($1)) ($endpos($2))] }
 
 def_            : TYPE separated_nonempty_list(AND, ty_def)
-                                                    { make_def(Modtype $2)($startpos($1)) ($endpos($2)) }
+                                                    { make_def(Mtype $2)($startpos($1)) ($endpos($2)) }
                 | LET separated_nonempty_list(AND, let_def)
-                                                    { make_def(Modlet $2) ($startpos($1)) ($endpos($2)) }
+                                                    { make_def(Mlet $2) ($startpos($1)) ($endpos($2)) }
                 | LET REC separated_nonempty_list(AND, let_rec_def)
-                                                    { make_def(Modletrec $3) ($startpos($1)) ($endpos($3)) }
-                | OPEN STRING                       { make_def(Modopen $2) ($startpos($1)) ($endpos($2)) }                                         
+                                                    { make_def(Mletrec $3) ($startpos($1)) ($endpos($3)) }
+                | OPEN STRING                       { make_def(Mopen $2) ($startpos($1)) ($endpos($2)) }                                         
 
 expr            : simple_expr                       { $1 }
                 | simple_expr_ simple_expr+         { make_expr(Eapply($1,$2)) ($startpos($1)) ($endpos($2)) }

@@ -162,18 +162,38 @@ and type_decl' =
   | Dabbrev of string * ty list * ty
 [@@deriving show]
 
-and mod_ = mod' ast
+type sig_expr = sig_expr' ast
 
-and mod' =
-  | Modexpr of expr
-  | Modlet of (pat * expr) list
-  | Modletrec of (pat * expr) list
-  | Modtype of (string * type_decl) list
-  | Modopen of string
+and sig_expr' =
+  | Svar of string
+  | Sfunctor of (string * sig_expr) * sig_expr
+  | Swith of ty list
+  | Sval of ty
+  | Stype of type_decl
+  | Smodule of string * sig_expr
+  | Ssig of string * sig_expr
+  | Sinclude of string
+[@@deriving show]
+
+type mod_expr = mod_expr' ast [@@deriving show]
+
+and mod_expr' =
+  | Mexpr of expr
+  | Mlet of (pat * expr) list
+  | Mletrec of (pat * expr) list
+  | Mtype of (string * type_decl) list
+  | Mvar of string
+  | Maccess of mod_expr * string
+  | Mfunctor of (string * sig_expr) * mod_expr
+  | Mapply of mod_expr * mod_expr
+  | Mseal of mod_expr * sig_expr
+  | Mmodule of (string * mod_expr) list
+  | Msig of (string * sig_expr)
+  | Mopen of string
 [@@deriving show]
 
 and matches = (pat * expr) list [@@deriving show]
-and def_list = mod_ list [@@deriving show]
+and def_list = mod_expr list [@@deriving show]
 
 type sema_sig = Sigval of (string * ty) | Sigtype of (string * type_decl)
 [@@deriving show]
