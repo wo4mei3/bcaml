@@ -85,11 +85,11 @@ sig_def         : VAL LID COLON ty                  { make_def(Sval($2,$4)) ($st
 
 sig_expr        : UID                               { make_def(Svar $1) ($startpos($1)) ($endpos($1))  }
                 | SIG list(sig_def) END             { make_def(Sstruct $2) ($startpos($1)) ($endpos($3))  }
-                | LPAREN UID COLON sig_expr RPAREN sig_expr  { make_def(Sfunctor(($2,$4),$6)) ($startpos($1)) ($endpos($6))  }
+                | FUNCTOR LPAREN UID COLON sig_expr RPAREN "->" sig_expr  { make_def(Sfunctor(($3,$5),$8)) ($startpos($1)) ($endpos($8))  }
 
 mod_expr        : mod_simple_expr                   { $1 }
                 | mod_simple_expr mod_simple_expr+  { make_def(Mapply($1, $2)) ($startpos($1)) ($endpos($2)) }
-                | FUNCTOR LPAREN LID COLON sig_expr RPAREN  "->"  mod_expr  
+                | FUNCTOR LPAREN UID COLON sig_expr RPAREN  "->"  mod_expr  
                     { make_def(Mfunctor(($3,$5), $8)) ($startpos($1)) ($endpos($8)) }
 
 mod_simple_expr : UID                               { make_def(Mvar $1) ($startpos($1)) ($endpos($1)) }
