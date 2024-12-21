@@ -63,7 +63,9 @@ let rec check_ast env = function
                   failwith
                     (Printf.sprintf
                        "cannot generalize the type of this variable %s %s" name
-                       (show_ty ty)))
+                       (show_ty ty))
+            | Sigmod _ -> ()
+            | Sigfun _ -> ())
           !add_env;
         fnames := fname :: !fnames;
         check_ast (!add_env @ env) rest

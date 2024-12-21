@@ -197,7 +197,11 @@ and mod_expr' =
 and matches = (pat * expr) list [@@deriving show]
 and def_list = mod_expr list [@@deriving show]
 
-type sema_sig = Sigval of (string * ty) | Sigtype of (string * type_decl)
+type sema_sig =
+  | Sigval of (string * ty)
+  | Sigtype of (string * type_decl)
+  | Sigmod of (string * sema_sig list)
+  | Sigfun of sema_sig * sema_sig
 [@@deriving show]
 
 type tyenv = sema_sig list [@@deriving show]

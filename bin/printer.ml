@@ -222,7 +222,7 @@ let pp_val expr =
   in
   aux expr 0
 
-let pp_env env =
+let rec pp_env env =
   let ret =
     List.fold_left
       (fun s sema_sig ->
@@ -230,7 +230,12 @@ let pp_env env =
         ^
         match sema_sig with
         | Sigval (n, ty) -> "val " ^ n ^ " : " ^ pp_ty ty
-        | Sigtype (_, decl) -> pp_decl decl)
+        | Sigtype (_, decl) -> pp_decl decl
+        | Sigmod (n, env) -> "signature " ^ n ^ " = sig " ^ pp_env env ^ " end"
+        | Sigfun (Sigmod (n, arg), Sigmod (n1, ret)) ->
+            "signature " ^ n1 ^ " = functor (" ^ n ^ " : sig " ^ pp_env arg
+            ^ "end ) -> sig" ^ pp_env ret ^ " end"
+        | _ -> "")
       "" env
   in
   reset_tvar_name ();
