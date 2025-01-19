@@ -223,21 +223,20 @@ let pp_val expr =
   in
   aux expr 0
 
-let rec pp_env env =
+let rec pp_sema_sig sema_sig =
   let ret =
-    List.fold_left
-      (fun s sema_sig ->
-        s ^ "\n"
-        ^
-        match sema_sig with
-        | Sigval (n, ty) -> "val " ^ n ^ " : " ^ pp_ty ty
-        | Sigtype (_, decl) -> pp_decl decl
-        | Sigmod (n, env) -> "signature " ^ n ^ " = sig " ^ pp_env env ^ " end"
-        | Sigfun (Sigmod (n, arg), Sigmod (n1, ret)) ->
-            "signature " ^ n1 ^ " = functor (" ^ n ^ " : sig " ^ pp_env arg
-            ^ "end ) -> sig" ^ pp_env ret ^ " end"
-        | _ -> "")
-      "" env
+    match sema_sig with
+    | Sigval (n, ty) -> "val " ^ n ^ " : " ^ pp_ty ty
+    | Sigtype (_, decl) -> pp_decl decl
+    | Sigmod (n, env) -> "signature " ^ n ^ " = sig " ^ pp_sema_sig env ^ " end"
+    | Sigstruct env -> "sig " ^ pp_env env ^ " end"
+    | Sigfun (Sigmod (n, arg), Sigmod (n1, ret)) ->
+        "signature " ^ n1 ^ " = functor (" ^ n ^ ": " ^ pp_sema_sig arg
+        ^ " ) -> " ^ pp_sema_sig ret
+    | _ -> ""
   in
   reset_tvar_name ();
   ret
+
+and pp_env env =
+  List.fold_left (fun s sema_sig -> s ^ "\n" ^ pp_sema_sig sema_sig) "" env

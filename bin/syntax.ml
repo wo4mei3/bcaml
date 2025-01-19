@@ -204,7 +204,8 @@ and def_list = mod_expr list [@@deriving show]
 type sema_sig =
   | Sigval of (string * ty)
   | Sigtype of (string * type_decl)
-  | Sigmod of (string * sema_sig list)
+  | Sigmod of (string * sema_sig)
+  | Sigstruct of sema_sig list
   | Sigfun of sema_sig * sema_sig
 [@@deriving show]
 

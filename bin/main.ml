@@ -65,7 +65,8 @@ let rec check_ast env = function
                        "cannot generalize the type of this variable %s %s" name
                        (show_ty ty))
             | Sigmod _ -> ()
-            | Sigfun _ -> ())
+            | Sigfun _ -> ()
+            | Sigstruct _ -> ())
           !add_env;
         fnames := fname :: !fnames;
         check_ast (!add_env @ env) rest
