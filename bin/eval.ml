@@ -56,6 +56,7 @@ let rec isval expr =
   | Erecord_access _ -> false
   | Ewhen _ -> true
   | EBlock1 _ -> false
+  | Epath _ -> true
 
 let eval_prim_unary prim x =
   match prim with
@@ -324,6 +325,7 @@ let rec subst_to_expr expr l =
     | Erecord_access (e, lbl) -> ref (Erecord_access (subst_to_expr e l, lbl))
     | Ewhen (lhs, rhs) -> ref (Ewhen (subst_to_expr lhs l, subst_to_expr rhs l))
     | EBlock1 expr -> ref (EBlock1 (subst_to_expr expr l))
+    | Epath _ -> expr
   in
   { ast = List.fold_left aux expr.ast l; pos = expr.pos }
 

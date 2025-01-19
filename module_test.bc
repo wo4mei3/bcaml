@@ -6,4 +6,5 @@ module X:functor (X:X) -> sig
   val x : int
 end = functor(X : X) -> struct
   let x = X.x
+  type x = t
 end

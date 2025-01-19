@@ -65,7 +65,7 @@ let rec pp_ty = function
       ^ ") " ^ name
   | Tunknown -> "Tunknown"
   | Ttag -> "Ttag"
-(*| ty -> Printf.sprintf "%s" (*(show_ty ty)*)*)
+  | ty -> Printf.sprintf "%s" (show_ty ty)
 (*| ty -> failwith (Printf.sprintf "pp_ty %s" (show_ty ty))*)
 
 let pp_decl decl =
@@ -218,6 +218,7 @@ let pp_val expr =
               (fun s (name, x) -> s ^ "; " ^ name ^ " = " ^ aux x (n + 1))
               "" xl
           ^ "}"
+      | Epath (path, name) -> String.concat "." path ^ "." ^ name
       | _ -> failwith "pp_exp"
   in
   aux expr 0

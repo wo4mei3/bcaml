@@ -97,6 +97,9 @@ mod_simple_expr : UID                               { make_def(Mvar $1) ($startp
                 | STRUCT list(def_) END             { make_def(Mstruct $2) ($startpos($1)) ($endpos($3)) }
                 | mod_simple_expr "." LID           { make_def(Maccess($1, $3)) ($startpos($1)) ($endpos($3)) }
 
+path            : path "." UID                      { $1@[$3] }
+                | UID                               { $1::[] }
+
 expr            : simple_expr                       { $1 }
                 | simple_expr_ simple_expr+         { make_expr(Eapply($1,$2)) ($startpos($1)) ($endpos($2)) }
                 | MATCH expr WITH function_case     { make_expr(Eapply(make_expr(Efunction($4)) ($startpos($4)) ($endpos($4)),[$2])) ($startpos($1)) ($endpos($4)) }
@@ -135,7 +138,8 @@ simple_expr_    :
                 | "(" expr ":" ty ")"               { make_expr(Econstraint($2,$4)) ($startpos($1)) ($endpos($5)) }
                 | "(" expr ")"                      { make_expr(EBlock1($2)) ($startpos($1)) ($endpos($3)) }
                 | BEGIN expr END                    { make_expr(EBlock1($2)) ($startpos($1)) ($endpos($3)) }
-                | simple_expr "." LID               { make_expr(Erecord_access($1,$3)) ($startpos($1)) ($endpos($3)) }
+                | simple_expr_ "." LID              { make_expr(Erecord_access($1,$3)) ($startpos($1)) ($endpos($3)) }
+                | path "." LID                      { make_expr(Epath($1,$3)) ($startpos($1)) ($endpos($3)) }
 
 expr_semi_list  : expr_semi_list ";" expr %prec prec_list
                                                     { $3::$1 }
@@ -257,6 +261,11 @@ tuple_ty        : simple_ty "*" separated_nonempty_list("*", simple_ty)
 simple_ty       : "(" ty "," separated_nonempty_list(",", ty) ")" tyname
                                                     { Tconstr($6,$2::$4) }
                 | simple_ty tyname                  { Tconstr($2,$1::[]) }
+                | tyname                            { Tconstr($1,[]) }
+                | "(" ty "," separated_nonempty_list(",", ty) ")" path "." tyname
+                                                    { Tpath($6, Tconstr($8,$2::$4)) }
+                | simple_ty path "." tyname                  { Tpath($2, Tconstr($4,$1::[])) }
+                | path "." tyname                            { Tpath($1, Tconstr($3,[])) }
                 | TUNIT                             { Tunit }
                 | TBOOL                             { Tbool }
                 | TINT                              { Tint }
@@ -264,7 +273,6 @@ simple_ty       : "(" ty "," separated_nonempty_list(",", ty) ")" tyname
                 | TCHAR                             { Tchar }
                 | TSTRING                           { Tstring }
                 | simple_ty REF                     { Tref $1 }
-                | tyname                            { Tconstr($1,[]) }
                 | param                             { $1 }
                 | "(" ty ")"                        { $2 }
 

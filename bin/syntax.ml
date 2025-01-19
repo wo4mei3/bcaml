@@ -23,8 +23,11 @@ and ty =
   | Tconstr of string * ty list
   | Trecord of string * ty list * (string * ty) list
   | Tvariant of string * ty list * (string * ty) list
+  | Tpath of path * ty
   | Ttag
 [@@deriving show]
+
+and path = string list [@@deriving show]
 
 type constant =
   | Cint of int
@@ -132,6 +135,7 @@ and expr' =
   | Erecord of (string * expr) list
   | Erecord_access of expr * string
   | Ewhen of expr * expr
+  | Epath of path * string
   | EBlock1 of expr
 [@@deriving show]
 

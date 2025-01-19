@@ -306,6 +306,7 @@ let rec is_simple expr =
   | Erecord_access (expr, _) -> is_simple expr
   | Ewhen (expr, body) -> is_simple expr && is_simple body
   | EBlock1 expr -> is_simple expr
+  | Epath _ -> true
 
 let rec curry = function
   | {
@@ -941,6 +942,7 @@ and type_expr env level expr =
       let ty = type_expr env level body in
       ty
   | EBlock1 expr -> type_expr env level expr
+  | Epath _ -> Tint
 
 and type_record_expr env level fields expr =
   let first_label = fst (List.hd fields) in
