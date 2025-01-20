@@ -79,8 +79,7 @@ let rec generalize level ty =
       List.iter (fun (_, ty) -> generalize level ty) fields
   | _ -> ()
 
-let instantiate level ty =
-  let id_var_hash = Hashtbl.create 10 in
+let instantiate' id_var_hash level ty =
   let rec f ty =
     match ty with
     | Tvar link -> (
@@ -108,6 +107,66 @@ let instantiate level ty =
     | _ -> ty
   in
   f ty
+
+let instantiate level ty = instantiate' (Hashtbl.create 10) level ty
+
+let instantiate_sema_sig sema_sig =
+  let id_var_hash = Hashtbl.create 10 in
+  let rec f id_var_hash = function
+    | Sigval (n, ty) -> Sigval (n, instantiate' id_var_hash 1 ty)
+    | Sigtype (n, decl) -> Sigtype (n, g id_var_hash decl)
+    | Sigmod (n, sema_sig) -> Sigmod (n, f id_var_hash sema_sig)
+    | Sigstruct l -> Sigstruct (List.map (f id_var_hash) l)
+    | Sigfun (arg, ret) -> Sigfun (f id_var_hash arg, f id_var_hash ret)
+  and g id_var_hash = function
+    | { ast = Drecord (n, tyl, fields); pos } -> (
+        match instantiate' id_var_hash 1 (Trecord (n, tyl, fields)) with
+        | Trecord (n, tyl, fields) -> { ast = Drecord (n, tyl, fields); pos }
+        | _ -> failwith "type_of_decl")
+    | { ast = Dvariant (n, tyl, fields); pos } -> (
+        match instantiate' id_var_hash 1 (Tvariant (n, tyl, fields)) with
+        | Tvariant (n, tyl, fields) -> { ast = Dvariant (n, tyl, fields); pos }
+        | _ -> failwith "type_of_decl")
+    | { ast = Dabbrev (n, tyl, ty); pos } -> (
+        match
+          instantiate' id_var_hash 1 (Trecord (n, tyl, [ ("temp", ty) ]))
+        with
+        | Trecord (n, tyl, [ ("temp", ty) ]) ->
+            { ast = Dabbrev (n, tyl, ty); pos }
+        | _ -> failwith "type_of_decl")
+    | { ast = Dabs (n, tyl, ty); pos } ->
+        { ast = Dabs (n, tyl, instantiate' id_var_hash 1 ty); pos }
+  in
+  f id_var_hash sema_sig
+
+let type_of_decl env name =
+  let rec aux = function
+    | Sigtype (_, { ast = Drecord (n, tyl, fields); _ }) :: _ when n = name -> (
+        match instantiate 1 (Trecord (n, tyl, fields)) with
+        | Trecord (_, tyl, _) as ty -> (tyl, ty)
+        | _ -> failwith "type_of_decl")
+    | Sigtype (_, { ast = Dvariant (n, tyl, fields); _ }) :: _ when n = name
+      -> (
+        match instantiate 1 (Tvariant (n, tyl, fields)) with
+        | Tvariant (_, tyl, _) as ty -> (tyl, ty)
+        | _ -> failwith "type_of_decl")
+    | Sigtype (_, { ast = Dabbrev (n, tyl, ty); _ }) :: _ when n = name -> (
+        match instantiate 1 (Trecord (n, tyl, [ ("temp", ty) ])) with
+        | Trecord (_, tyl, [ ("temp", ty) ]) -> (tyl, ty)
+        | _ -> failwith "type_of_decl")
+    | Sigtype (_, { ast = Dabs (n, tyl, ty); _ }) :: _ when n = name -> (tyl, ty)
+    | _ :: rest -> aux rest
+    | [] -> failwith (Printf.sprintf "type_of_decl %s" name)
+  in
+  aux env
+
+let rec access_sig path sema_sig =
+  match (path, sema_sig) with
+  | s :: path, Sigmod (n, sema_sig) when s = n -> access_sig path sema_sig
+  | (s :: _ as path), Sigstruct l when Option.is_some (find_mod s l) ->
+      access_sig path (Option.get (find_mod s l))
+  | _ :: _, _ -> failwith "invalid path"
+  | [], sema_sig -> instantiate_sema_sig sema_sig
 
 let rec occursin id = function
   | Tvar link -> (
@@ -184,44 +243,7 @@ let rec unify ty1 ty2 =
 
 and unify_list tyl1 tyl2 = List.iter2 unify tyl1 tyl2
 
-let rec subst_ty t id ty =
-  match t with
-  | Tvar { contents = Unbound { id = id'; level = _ } } when id = id' -> ty
-  | Tvar { contents = Unbound _ } -> t
-  | Tvar { contents = Linkto t } -> subst_ty t id ty
-  | Tlist t -> Tlist (subst_ty t id ty)
-  | Tref t -> Tref (subst_ty t id ty)
-  | Tarrow (arg, ret) -> Tarrow (subst_ty arg id ty, subst_ty ret id ty)
-  | Ttuple tyl -> Ttuple (List.map (fun t -> subst_ty t id ty) tyl)
-  | Tconstr (name, tyl) ->
-      Tconstr (name, List.map (fun t -> subst_ty t id ty) tyl)
-  | Trecord (name, tyl, fields) ->
-      Trecord (name, tyl, List.map (fun (s, t) -> (s, subst_ty t id ty)) fields)
-  | Tvariant (name, tyl, fields) ->
-      Tvariant (name, tyl, List.map (fun (s, t) -> (s, subst_ty t id ty)) fields)
-  | _ -> t
-
-let rec type_of_decl env name =
-  let rec aux = function
-    | Sigtype (_, { ast = Drecord (n, tyl, fields); _ }) :: _ when n = name -> (
-        match instantiate 1 (Trecord (n, tyl, fields)) with
-        | Trecord (_, tyl, _) as ty -> (tyl, ty)
-        | _ -> failwith "type_of_decl")
-    | Sigtype (_, { ast = Dvariant (n, tyl, fields); _ }) :: _ when n = name
-      -> (
-        match instantiate 1 (Tvariant (n, tyl, fields)) with
-        | Tvariant (_, tyl, _) as ty -> (tyl, ty)
-        | _ -> failwith "type_of_decl")
-    | Sigtype (_, { ast = Dabbrev (n, tyl, ty); _ }) :: _ when n = name -> (
-        match instantiate 1 (Trecord (n, tyl, [ ("temp", ty) ])) with
-        | Trecord (_, tyl, [ ("temp", ty) ]) -> (tyl, ty)
-        | _ -> failwith "type_of_decl")
-    | _ :: rest -> aux rest
-    | [] -> failwith (Printf.sprintf "type_of_decl %s" name)
-  in
-  aux env
-
-and expand_abbrev ty env =
+let rec expand_abbrev ty env =
   match ty with
   | Tconstr (name, params) ->
       let tyl, ty = type_of_decl env name in

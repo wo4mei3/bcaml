@@ -250,6 +250,7 @@ ty_def          : params tyname "=" "{" separated_nonempty_list(";", separated_p
                 | params tyname "=" nonempty_list("|" sum_case { $2 })
                                                     { ($2, make_decl(Dvariant($2,$1,$4)) ($startpos($1)) ($endpos($4))) }
                 | params tyname "=" ty              { ($2, make_decl(Dabbrev($2,$1,$4)) ($startpos($1)) ($endpos($4))) }
+                | params tyname                     { ($2, make_decl(Dabs($2,$1, Tvar (ref (Unbound {id=Idstr ("Abs" ^ $2); level= generic})))) ($startpos($1)) ($endpos($2))) }
 
 ty              : simple_ty                         { $1 }
                 | ty "->" ty                        { Tarrow($1,$3) }

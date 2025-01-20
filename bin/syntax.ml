@@ -164,6 +164,7 @@ and type_decl' =
   | Drecord of string * ty list * (string * ty) list
   | Dvariant of string * ty list * (string * ty) list
   | Dabbrev of string * ty list * ty
+  | Dabs of string * ty list * ty
 [@@deriving show]
 
 type sig_expr = sig_expr' ast
@@ -219,6 +220,11 @@ let rec find_val n = function
 let rec find_type n = function
   | Sigtype (name, decl) :: _ when n = name -> Some decl
   | _ :: xs -> find_type n xs
+  | [] -> None
+
+let rec find_mod n = function
+  | (Sigmod (name, _) as m) :: _ when n = name -> Some m
+  | _ :: xs -> find_mod n xs
   | [] -> None
 
 let get_constant = function
