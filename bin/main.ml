@@ -16,10 +16,10 @@ let if_debug f =
 
 let rec check_ast env = function
   | { ast = Mtype decl; _ } :: rest ->
-      let add_env = List.map (fun decl -> Sigtype decl) decl in
-      check_valid_decl add_env;
-      check_recursive_abbrev add_env;
-      check_recursive_def add_env;
+      let add_env = Sigtype decl :: [] in
+      check_valid_decl decl;
+      check_recursive_abbrev decl;
+      check_recursive_def decl;
       if_debug (fun () -> print_endline (pp_env add_env));
       check_ast (add_env @ env) rest
   | { ast = Mexpr expr; _ } :: rest ->
@@ -48,13 +48,15 @@ let rec check_ast env = function
                 ^ pp_ty (Option.get (find_val name add_env)))))
         (eval_letrec l);
       check_ast add_env rest
-  | { ast = Mopen fname; _ } :: rest ->
-      let fname = Filename.basename fname in
+  | { ast = Mopen [ fname ]; _ } :: rest ->
+      (*let fname = Filename.basename fname in*)
       if List.mem fname !fnames then check_ast env rest
       else
         let add_env = ref [] in
         debug := false;
-        do_interp fname (open_file fname) add_env;
+        do_interp fname
+          (open_file (String.uncapitalize_ascii fname ^ ".bc"))
+          add_env;
         List.iter
           (function
             | Sigtype _ -> ()

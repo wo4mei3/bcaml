@@ -70,7 +70,7 @@ def_            : TYPE separated_nonempty_list(AND, ty_def)
                                                     { make_def(Mlet $2) ($startpos($1)) ($endpos($2)) }
                 | LET REC separated_nonempty_list(AND, let_rec_def)
                                                     { make_def(Mletrec $3) ($startpos($1)) ($endpos($3)) }
-                | OPEN STRING                       { make_def(Mopen $2) ($startpos($1)) ($endpos($2)) }                                         
+                | OPEN path                         { make_def(Mopen $2) ($startpos($1)) ($endpos($2)) }                                         
                 | MODULE UID "=" mod_expr           { make_def(Mmodule($2,$4)) ($startpos($1)) ($endpos($2)) }  
                 | MODULE UID COLON sig_expr "=" mod_expr 
                 { make_def(Mmodule($2,make_def(Mseal($6, $4)) ($startpos($4)) ($endpos($6)))) ($startpos($1)) ($endpos($6)) }  
@@ -79,11 +79,13 @@ def_            : TYPE separated_nonempty_list(AND, ty_def)
 sig_def         : VAL LID COLON ty                  { make_def(Sval($2,$4)) ($startpos($1)) ($endpos($4)) }
                 | TYPE separated_nonempty_list(AND, ty_def)
                                                     { make_def(Stype $2)($startpos($1)) ($endpos($2)) }
-                | MODULE UID ":" sig_expr           { make_def(Smodule($2,$4)) ($startpos($1)) ($endpos($2)) }  
-                | SIGNATURE UID "=" sig_expr        { make_def(Ssig($2,$4)) ($startpos($1)) ($endpos($2)) }  
-                | INCLUDE STRING                    { make_def(Sinclude $2) ($startpos($1)) ($endpos($2)) }    
+                | MODULE UID ":" sig_expr           { make_def(Smodule($2,$4)) ($startpos($1)) ($endpos($4)) }  
+                | SIGNATURE UID "=" sig_expr        { make_def(Ssig($2,$4)) ($startpos($1)) ($endpos($4)) }  
+                | INCLUDE path                      { make_def(Sinclude $2) ($startpos($1)) ($endpos($2)) }    
 
 sig_expr        : UID                               { make_def(Svar $1) ($startpos($1)) ($endpos($1))  }
+                | UID WITH TYPE separated_nonempty_list(AND, ty_def_)
+                                                    { make_def(Swith(make_def(Svar $1) ($startpos($1)) ($endpos($1)), $4)) ($startpos($1)) ($endpos($4)) }
                 | SIG list(sig_def) END             { make_def(Sstruct $2) ($startpos($1)) ($endpos($3))  }
                 | FUNCTOR LPAREN UID COLON sig_expr RPAREN "->" sig_expr  { make_def(Sfunctor(($3,$5),$8)) ($startpos($1)) ($endpos($8))  }
 
@@ -250,7 +252,14 @@ ty_def          : params tyname "=" "{" separated_nonempty_list(";", separated_p
                 | params tyname "=" nonempty_list("|" sum_case { $2 })
                                                     { ($2, make_decl(Dvariant($2,$1,$4)) ($startpos($1)) ($endpos($4))) }
                 | params tyname "=" ty              { ($2, make_decl(Dabbrev($2,$1,$4)) ($startpos($1)) ($endpos($4))) }
-                | params tyname                     { ($2, make_decl(Dabs($2,$1, Tvar (ref (Unbound {id=Idstr ("Abs" ^ $2); level= generic})))) ($startpos($1)) ($endpos($2))) }
+                | params tyname                     { ($2, make_decl(Dabs($2,$1, Tabs (Tvar(ref (Unbound {id=Idstr ("Abs" ^ $2); level= generic})), $1))) ($startpos($1)) ($endpos($2))) }
+
+ty_def_         : params tyname "=" "{" separated_nonempty_list(";", separated_pair(field, ":", ty)) "}"
+                                                    { ($2, make_decl(Drecord($2,$1,$5)) ($startpos($1)) ($endpos($6))) }
+                | params tyname "=" nonempty_list("|" sum_case { $2 })
+                                                    { ($2, make_decl(Dvariant($2,$1,$4)) ($startpos($1)) ($endpos($4))) }
+                | params tyname "=" ty              { ($2, make_decl(Dabbrev($2,$1,$4)) ($startpos($1)) ($endpos($4))) }
+
 
 ty              : simple_ty                         { $1 }
                 | ty "->" ty                        { Tarrow($1,$3) }

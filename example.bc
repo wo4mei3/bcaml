@@ -107,7 +107,7 @@ let mkl n =
     if i < n then i::aux (i+1)
     else [i] in aux 0
 
-open "test.bc"
+open Test
 
 let sum = total (mkl 10)
 

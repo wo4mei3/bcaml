@@ -104,6 +104,7 @@ let instantiate' id_var_hash level ty =
     | Tvariant (name, tyl, fields) ->
         Tvariant
           (name, List.map f tyl, List.map (fun (n, ty) -> (n, f ty)) fields)
+    | Tabs (ty, tyl) -> Tabs (f ty, List.map f tyl)
     | _ -> ty
   in
   f ty
@@ -114,7 +115,8 @@ let instantiate_sema_sig sema_sig =
   let id_var_hash = Hashtbl.create 10 in
   let rec f id_var_hash = function
     | Sigval (n, ty) -> Sigval (n, instantiate' id_var_hash 1 ty)
-    | Sigtype (n, decl) -> Sigtype (n, g id_var_hash decl)
+    | Sigtype l ->
+        Sigtype (List.map (fun (n, decl) -> (n, g id_var_hash decl)) l)
     | Sigmod (n, sema_sig) -> Sigmod (n, f id_var_hash sema_sig)
     | Sigstruct l -> Sigstruct (List.map (f id_var_hash) l)
     | Sigfun (arg, ret) -> Sigfun (f id_var_hash arg, f id_var_hash ret)
@@ -139,26 +141,26 @@ let instantiate_sema_sig sema_sig =
   in
   f id_var_hash sema_sig
 
-let type_of_decl env name =
-  let rec aux = function
-    | Sigtype (_, { ast = Drecord (n, tyl, fields); _ }) :: _ when n = name -> (
+let rec type_of_decl env name =
+  let aux = function
+    | { ast = Drecord (n, tyl, fields); _ } -> (
         match instantiate 1 (Trecord (n, tyl, fields)) with
         | Trecord (_, tyl, _) as ty -> (tyl, ty)
         | _ -> failwith "type_of_decl")
-    | Sigtype (_, { ast = Dvariant (n, tyl, fields); _ }) :: _ when n = name
-      -> (
+    | { ast = Dvariant (n, tyl, fields); _ } -> (
         match instantiate 1 (Tvariant (n, tyl, fields)) with
         | Tvariant (_, tyl, _) as ty -> (tyl, ty)
         | _ -> failwith "type_of_decl")
-    | Sigtype (_, { ast = Dabbrev (n, tyl, ty); _ }) :: _ when n = name -> (
+    | { ast = Dabbrev (n, tyl, ty); _ } -> (
         match instantiate 1 (Trecord (n, tyl, [ ("temp", ty) ])) with
         | Trecord (_, tyl, [ ("temp", ty) ]) -> (tyl, ty)
         | _ -> failwith "type_of_decl")
-    | Sigtype (_, { ast = Dabs (n, tyl, ty); _ }) :: _ when n = name -> (tyl, ty)
-    | _ :: rest -> aux rest
-    | [] -> failwith (Printf.sprintf "type_of_decl %s" name)
+    | { ast = Dabs (_, tyl, ty); _ } -> (tyl, ty)
   in
-  aux env
+  match env with
+  | Sigtype l :: _ when List.mem_assoc name l -> aux (List.assoc name l)
+  | _ :: xs -> type_of_decl xs name
+  | [] -> failwith (Printf.sprintf "type_of_decl %s" name)
 
 let rec access_sig path sema_sig =
   match (path, sema_sig) with
@@ -235,6 +237,9 @@ let rec unify ty1 ty2 =
   | Tvariant (name1, _, fields1), Tvariant (name2, _, fields2)
     when name1 = name2 ->
       unify_list (List.map snd fields1) (List.map snd fields2)
+  | Tabs (ty1, tyl1), Tabs (ty2, tyl2) ->
+      unify ty1 ty2;
+      unify_list tyl1 tyl2
   | ty1, ty2 when ty1 = ty2 -> ()
   | _ ->
       failwith
@@ -276,9 +281,15 @@ let fields_of_type ty =
 
 let label_belong_to env label pos =
   let rec aux = function
-    | Sigtype (_, { ast = Drecord (name, _, fields); _ }) :: _
-      when List.mem_assoc label fields ->
-        name
+    | Sigtype l :: rest ->
+        let rec aux2 = function
+          | (_, { ast = Drecord (name, _, fields); _ }) :: _
+            when List.mem_assoc label fields ->
+              name
+          | _ :: rest -> aux2 rest
+          | [] -> aux rest
+        in
+        aux2 l
     | _ :: rest -> aux rest
     | [] ->
         failwith
@@ -288,9 +299,15 @@ let label_belong_to env label pos =
 
 let tag_belong_to env tag pos =
   let rec aux = function
-    | Sigtype (_, { ast = Dvariant (name, _, fields); _ }) :: _
-      when List.mem_assoc tag fields ->
-        name
+    | Sigtype l :: rest ->
+        let rec aux2 = function
+          | (_, { ast = Dvariant (name, _, fields); _ }) :: _
+            when List.mem_assoc tag fields ->
+              name
+          | _ :: rest -> aux2 rest
+          | [] -> aux rest
+        in
+        aux2 l
     | _ :: rest -> aux rest
     | [] ->
         failwith
@@ -1035,3 +1052,17 @@ let type_letrec env pat_expr =
       if is_simple expr then generalize level ty)
     tyl pat_expr;
   add_env @ env
+
+let rec type_sig_expr env sig_expr =
+  match sig_expr.ast with
+  | Svar name -> access_sig [ name ] (Sigstruct env)
+  | Sfunctor ((name, arg), ret) ->
+      let arg = type_sig_expr env arg in
+      let ret = type_sig_expr (Sigmod (name, arg) :: env) ret in
+      Sigfun (arg, ret)
+  | Sval (name, ty) -> Sigval (name, ty)
+  | Sstruct l -> Sigstruct (List.map (type_sig_expr env) l)
+  | Smodule (name, sig_expr) -> Sigmod (name, type_sig_expr env sig_expr)
+  | Ssig (name, sig_expr) -> Sigmod (name, type_sig_expr env sig_expr)
+  | Sinclude path -> access_sig path (Sigstruct env)
+  | _ -> Sigstruct []

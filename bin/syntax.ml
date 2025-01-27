@@ -24,6 +24,7 @@ and ty =
   | Trecord of string * ty list * (string * ty) list
   | Tvariant of string * ty list * (string * ty) list
   | Tpath of path * ty
+  | Tabs of ty * ty list
   | Ttag
 [@@deriving show]
 
@@ -172,13 +173,13 @@ type sig_expr = sig_expr' ast
 and sig_expr' =
   | Svar of string
   | Sfunctor of (string * sig_expr) * sig_expr
-  | Swith of ty list
+  | Swith of sig_expr * (string * type_decl) list
   | Sval of string * ty
   | Stype of (string * type_decl) list
   | Sstruct of sig_expr list
   | Smodule of string * sig_expr
   | Ssig of string * sig_expr
-  | Sinclude of string
+  | Sinclude of path
 [@@deriving show]
 
 type mod_expr = mod_expr' ast [@@deriving show]
@@ -196,7 +197,7 @@ and mod_expr' =
   | Mstruct of mod_expr list
   | Mmodule of string * mod_expr
   | Msig of (string * sig_expr)
-  | Mopen of string
+  | Mopen of path
 [@@deriving show]
 
 and matches = (pat * expr) list [@@deriving show]
@@ -204,7 +205,7 @@ and def_list = mod_expr list [@@deriving show]
 
 type sema_sig =
   | Sigval of (string * ty)
-  | Sigtype of (string * type_decl)
+  | Sigtype of (string * type_decl) list
   | Sigmod of (string * sema_sig)
   | Sigstruct of sema_sig list
   | Sigfun of sema_sig * sema_sig
@@ -218,7 +219,7 @@ let rec find_val n = function
   | [] -> None
 
 let rec find_type n = function
-  | Sigtype (name, decl) :: _ when n = name -> Some decl
+  | Sigtype l :: _ when List.mem_assoc n l -> Some (List.assoc n l)
   | _ :: xs -> find_type n xs
   | [] -> None
 
@@ -226,6 +227,10 @@ let rec find_mod n = function
   | (Sigmod (name, _) as m) :: _ when n = name -> Some m
   | _ :: xs -> find_mod n xs
   | [] -> None
+
+let get_struct = function
+  | Sigmod (_, Sigstruct l) -> l
+  | _ -> failwith "get_struct"
 
 let get_constant = function
   | Econstant cst -> cst

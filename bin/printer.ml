@@ -227,7 +227,8 @@ let rec pp_sema_sig sema_sig =
   let ret =
     match sema_sig with
     | Sigval (n, ty) -> "val " ^ n ^ " : " ^ pp_ty ty
-    | Sigtype (_, decl) -> pp_decl decl
+    | Sigtype l ->
+        List.fold_left (fun s (_, decl) -> s ^ "\n" ^ pp_decl decl) "" l
     | Sigmod (n, env) -> "signature " ^ n ^ " = sig " ^ pp_sema_sig env ^ " end"
     | Sigstruct env -> "sig " ^ pp_env env ^ " end"
     | Sigfun (Sigmod (n, arg), Sigmod (n1, ret)) ->

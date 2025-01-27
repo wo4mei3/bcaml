@@ -118,6 +118,7 @@ rule token = parse
 | "in" { IN }
 | "open" { OPEN }
 | "include"  { INCLUDE }
+| "with" { WITH }
 | "let" { LET }
 | "of" { OF }
 | "rec" { REC }
