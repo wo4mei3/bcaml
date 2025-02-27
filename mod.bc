@@ -1,0 +1,62 @@
+signature X = sig
+  val x : int
+  type t
+end
+(*
+module Z:functor (X:X) -> functor(Y:X) -> sig
+  val f : X.t -> Y.t
+end = functor(X : X) -> functor(Y:X) -> struct
+  let f x = x
+end*)
+(*
+module Y:X = struct
+  let x = 0
+  type t = int
+end
+
+signature Y = sig
+  type t = int
+end
+
+module Y:Y = struct
+  type t = int
+end*)
+
+signature S = sig
+  val v : t
+  val f : t -> t
+  type t
+end
+
+module F = functor (X : S) -> functor (Y : S) -> struct
+  let w = Y.f X.v
+end
+
+module Bool = struct
+  type t = bool
+  let v = false
+  let f b = true
+end
+
+module Int = struct
+  type t = int
+  let v = 30
+  let f x = x + 1
+end
+
+(*module M : sig val w : int end = F Bool Int*)
+signature S = sig 
+  type t 
+end
+
+module F:
+functor(M1 :S) -> 
+  functor(M2:S)-> 
+    sig 
+      val f:M1.t->M2.t 
+    end = 
+functor(M1 :S) -> 
+  functor(M2:S)->
+    struct 
+      let f x=x 
+    end

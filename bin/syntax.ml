@@ -30,6 +30,15 @@ and ty =
 
 and path = string list [@@deriving show]
 
+let is_zero_arity = function
+  | Tunit
+  | Tbool
+  | Tint
+  | Tfloat
+  | Tchar
+  | Tstring -> true
+  | _ -> false
+
 type constant =
   | Cint of int
   | Cbool of bool
@@ -215,17 +224,34 @@ type tyenv = sema_sig list [@@deriving show]
 
 let rec find_val n = function
   | Sigval (name, ty) :: _ when n = name -> Some ty
+  | Sigstruct l :: _ when Option.is_some (find_val n l) -> find_val n l
+  | Sigmod (_, Sigstruct l) :: _ when Option.is_some (find_val n l) ->
+      find_val n l
   | _ :: xs -> find_val n xs
   | [] -> None
 
 let rec find_type n = function
   | Sigtype l :: _ when List.mem_assoc n l -> Some (List.assoc n l)
+  | Sigstruct l :: _ when Option.is_some (find_type n l) -> find_type n l
+  | Sigmod (_, Sigstruct l) :: _ when Option.is_some (find_type n l) ->
+      find_type n l
   | _ :: xs -> find_type n xs
   | [] -> None
 
 let rec find_mod n = function
   | (Sigmod (name, _) as m) :: _ when n = name -> Some m
+  | Sigstruct l :: _ when Option.is_some (find_mod n l) -> find_mod n l
+  | Sigmod (_, Sigstruct l) :: _ when Option.is_some (find_mod n l) ->
+      find_mod n l
   | _ :: xs -> find_mod n xs
+  | [] -> None
+
+let rec find_fun n = function
+  | (Sigfun (_, Sigmod (name, _)) as m) :: _ when n = name -> Some m
+  | Sigstruct l :: _ when Option.is_some (find_fun n l) -> find_fun n l
+  | Sigmod (_, Sigstruct l) :: _ when Option.is_some (find_fun n l) ->
+      find_fun n l
+  | _ :: xs -> find_fun n xs
   | [] -> None
 
 let get_struct = function

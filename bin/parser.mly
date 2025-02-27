@@ -97,7 +97,7 @@ mod_expr        : mod_simple_expr                   { $1 }
 mod_simple_expr : UID                               { make_def(Mvar $1) ($startpos($1)) ($endpos($1)) }
                 | LPAREN mod_expr RPAREN            { make_def($2.ast) ($startpos($1)) ($endpos($3)) }
                 | STRUCT list(def_) END             { make_def(Mstruct $2) ($startpos($1)) ($endpos($3)) }
-                | mod_simple_expr "." LID           { make_def(Maccess($1, $3)) ($startpos($1)) ($endpos($3)) }
+                | mod_simple_expr "." UID           { make_def(Maccess($1, $3)) ($startpos($1)) ($endpos($3)) }
 
 path            : path "." UID                      { $1@[$3] }
                 | UID                               { $1::[] }
@@ -252,7 +252,7 @@ ty_def          : params tyname "=" "{" separated_nonempty_list(";", separated_p
                 | params tyname "=" nonempty_list("|" sum_case { $2 })
                                                     { ($2, make_decl(Dvariant($2,$1,$4)) ($startpos($1)) ($endpos($4))) }
                 | params tyname "=" ty              { ($2, make_decl(Dabbrev($2,$1,$4)) ($startpos($1)) ($endpos($4))) }
-                | params tyname                     { ($2, make_decl(Dabs($2,$1, Tabs (Tvar(ref (Unbound {id=Idstr ("Abs" ^ $2); level= generic})), $1))) ($startpos($1)) ($endpos($2))) }
+                | params tyname                     { ($2, make_decl(Dabs($2,$1, Tabs (Tvar (ref (Unbound {id=Idstr $2; level= generic})), $1))) ($startpos($1)) ($endpos($2))) }
 
 ty_def_         : params tyname "=" "{" separated_nonempty_list(";", separated_pair(field, ":", ty)) "}"
                                                     { ($2, make_decl(Drecord($2,$1,$5)) ($startpos($1)) ($endpos($6))) }

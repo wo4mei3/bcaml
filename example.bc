@@ -79,7 +79,6 @@ let () = printf "%d %s\n" 5 "cats"
 type 'a tree =
 | Node of 'a tree ref * 'a tree ref
 | Leaf of 'a
-
 let _ = Node(ref (Leaf 3), ref (Leaf 5))
 
 type y = {data:y option ref}

@@ -97,14 +97,17 @@ let instantiate' id_var_hash level ty =
     | Tref ty -> Tref (f ty)
     | Tarrow (arg, ret) -> Tarrow (f arg, f ret)
     | Ttuple tyl -> Ttuple (List.map f tyl)
-    | Tconstr (name, tyl) -> Tconstr (name, List.map f tyl)
+    | Tconstr (name, tyl) -> (
+        try Hashtbl.find id_var_hash (Idstr name)
+        with Not_found -> Tconstr (name, List.map f tyl))
     | Trecord (name, tyl, fields) ->
         Trecord
           (name, List.map f tyl, List.map (fun (n, ty) -> (n, f ty)) fields)
     | Tvariant (name, tyl, fields) ->
         Tvariant
           (name, List.map f tyl, List.map (fun (n, ty) -> (n, f ty)) fields)
-    | Tabs (ty, tyl) -> Tabs (f ty, List.map f tyl)
+    | Tabs (ty, tyl) -> 
+      Tabs(f ty, List.map f tyl)
     | _ -> ty
   in
   f ty
@@ -124,41 +127,42 @@ let instantiate_sema_sig sema_sig =
     | { ast = Drecord (n, tyl, fields); pos } -> (
         match instantiate' id_var_hash 1 (Trecord (n, tyl, fields)) with
         | Trecord (n, tyl, fields) -> { ast = Drecord (n, tyl, fields); pos }
-        | _ -> failwith "type_of_decl")
+        | _ -> failwith "instantiate_sema_sig")
     | { ast = Dvariant (n, tyl, fields); pos } -> (
         match instantiate' id_var_hash 1 (Tvariant (n, tyl, fields)) with
         | Tvariant (n, tyl, fields) -> { ast = Dvariant (n, tyl, fields); pos }
-        | _ -> failwith "type_of_decl")
+        | _ -> failwith "instantiate_sema_sig")
     | { ast = Dabbrev (n, tyl, ty); pos } -> (
         match
           instantiate' id_var_hash 1 (Trecord (n, tyl, [ ("temp", ty) ]))
         with
         | Trecord (n, tyl, [ ("temp", ty) ]) ->
             { ast = Dabbrev (n, tyl, ty); pos }
-        | _ -> failwith "type_of_decl")
+        | _ -> failwith "instantiate_sema_sig")
     | { ast = Dabs (n, tyl, ty); pos } ->
         { ast = Dabs (n, tyl, instantiate' id_var_hash 1 ty); pos }
   in
   f id_var_hash sema_sig
 
+let type_of_decl' = function
+  | { ast = Drecord (n, tyl, fields); _ } -> (
+      match instantiate 1 (Trecord (n, tyl, fields)) with
+      | Trecord (_, tyl, _) as ty -> (tyl, ty)
+      | _ -> failwith "type_of_decl")
+  | { ast = Dvariant (n, tyl, fields); _ } -> (
+      match instantiate 1 (Tvariant (n, tyl, fields)) with
+      | Tvariant (_, tyl, _) as ty -> (tyl, ty)
+      | _ -> failwith "type_of_decl")
+  | { ast = Dabbrev (n, tyl, ty); _ } -> (
+      match instantiate 1 (Trecord (n, tyl, [ ("temp", ty) ])) with
+      | Trecord (_, tyl, [ ("temp", ty) ]) -> (tyl, ty)
+      | _ -> failwith "type_of_decl")
+  | { ast = Dabs (_, tyl, ty); _ } -> (tyl, ty)
+
 let rec type_of_decl env name =
-  let aux = function
-    | { ast = Drecord (n, tyl, fields); _ } -> (
-        match instantiate 1 (Trecord (n, tyl, fields)) with
-        | Trecord (_, tyl, _) as ty -> (tyl, ty)
-        | _ -> failwith "type_of_decl")
-    | { ast = Dvariant (n, tyl, fields); _ } -> (
-        match instantiate 1 (Tvariant (n, tyl, fields)) with
-        | Tvariant (_, tyl, _) as ty -> (tyl, ty)
-        | _ -> failwith "type_of_decl")
-    | { ast = Dabbrev (n, tyl, ty); _ } -> (
-        match instantiate 1 (Trecord (n, tyl, [ ("temp", ty) ])) with
-        | Trecord (_, tyl, [ ("temp", ty) ]) -> (tyl, ty)
-        | _ -> failwith "type_of_decl")
-    | { ast = Dabs (_, tyl, ty); _ } -> (tyl, ty)
-  in
   match env with
-  | Sigtype l :: _ when List.mem_assoc name l -> aux (List.assoc name l)
+  | Sigtype l :: _ when List.mem_assoc name l ->
+      type_of_decl' (List.assoc name l)
   | _ :: xs -> type_of_decl xs name
   | [] -> failwith (Printf.sprintf "type_of_decl %s" name)
 
@@ -167,7 +171,9 @@ let rec access_sig path sema_sig =
   | s :: path, Sigmod (n, sema_sig) when s = n -> access_sig path sema_sig
   | (s :: _ as path), Sigstruct l when Option.is_some (find_mod s l) ->
       access_sig path (Option.get (find_mod s l))
-  | _ :: _, _ -> failwith "invalid path"
+  | _ :: _, _ ->
+      print_endline (show_tyenv [ sema_sig ]);
+      failwith ("invalid path :" ^ show_path path (*^ (show_sema_sig sema_sig)*))
   | [], sema_sig -> instantiate_sema_sig sema_sig
 
 let rec occursin id = function
@@ -237,7 +243,7 @@ let rec unify ty1 ty2 =
   | Tvariant (name1, _, fields1), Tvariant (name2, _, fields2)
     when name1 = name2 ->
       unify_list (List.map snd fields1) (List.map snd fields2)
-  | Tabs (ty1, tyl1), Tabs (ty2, tyl2) ->
+  | Tabs (ty1, tyl1), Tabs (ty2, tyl2)  ->
       unify ty1 ty2;
       unify_list tyl1 tyl2
   | ty1, ty2 when ty1 = ty2 -> ()
@@ -981,7 +987,11 @@ and type_expr env level expr =
       let ty = type_expr env level body in
       ty
   | EBlock1 expr -> type_expr env level expr
-  | Epath _ -> Tint
+  | Epath (path, name) -> (
+      let l = access_sig path (Sigstruct env) in
+      match find_val name [ l ] with
+      | Some ty -> ty
+      | None -> failwith ("invalid path" ^ name))
 
 and type_record_expr env level fields expr =
   let first_label = fst (List.hd fields) in
@@ -1035,7 +1045,7 @@ let type_let env pat_expr =
       type_expect env (level + 1) expr ty;
       if is_simple expr then generalize level ty)
     tyl pat_expr;
-  add_env @ env
+  add_env
 
 let type_letrec env pat_expr =
   let level = 0 in
@@ -1051,7 +1061,174 @@ let type_letrec env pat_expr =
       type_expect (add_env @ env) (level + 1) expr ty;
       if is_simple expr then generalize level ty)
     tyl pat_expr;
-  add_env @ env
+  add_env
+
+let rec check_valid_ty tyl = function
+  | Tvar { contents = Unbound { id; level = _ } } ->
+      List.exists (occursin id) tyl
+  | Tvar { contents = Linkto t } -> check_valid_ty tyl t
+  | Tlist t -> check_valid_ty tyl t
+  | Tref t -> check_valid_ty tyl t
+  | Tarrow (arg, ret) -> check_valid_ty tyl arg && check_valid_ty tyl ret
+  | Ttuple tyl' -> List.for_all (fun t -> check_valid_ty tyl t) tyl'
+  | Tconstr (_, tyl') -> List.for_all (fun t -> check_valid_ty tyl t) tyl'
+  | Trecord (_, _, fields) ->
+      List.for_all (fun (_, t) -> check_valid_ty tyl t) fields
+  | Tvariant (_, _, fields) ->
+      List.for_all (fun (_, t) -> check_valid_ty tyl t) fields
+  | _ -> true
+
+let check_valid_decl decl =
+  let rec aux = function
+    | (_, { ast = Drecord (_, tyl, fields); _ }) :: rest ->
+        if List.for_all (fun (_, t) -> check_valid_ty tyl t) fields then
+          aux rest
+        else
+          failwith
+            "a type variable doesn't appear in the type parameter list is found"
+    | (_, { ast = Dvariant (_, tyl, fields); _ }) :: rest ->
+        if List.for_all (fun (_, t) -> check_valid_ty tyl t) fields then
+          aux rest
+        else
+          failwith
+            "a type variable doesn't appear in the type parameter list is found"
+    | (_, { ast = Dabbrev (_, tyl, ty); _ }) :: rest ->
+        if check_valid_ty tyl ty then aux rest
+        else
+          failwith
+            "a type variable doesn't appear in the type parameter list is found"
+    | _ :: rest -> aux rest
+    | _ -> ()
+  in
+  aux decl
+
+type status = Checking | Checked
+
+let name_is_checking name seen =
+  if List.mem_assoc name seen then !(List.assoc name seen) = Checking else false
+
+let name_is_checked name seen =
+  if List.mem_assoc name seen then !(List.assoc name seen) = Checked else false
+
+let rec is_abbrev name = function
+  | (_, { ast = Dabbrev (name', _, _); _ }) :: _ when name = name' -> true
+  | _ :: rest -> is_abbrev name rest
+  | [] -> false
+
+let rec abbrev_found_in_ty decl seen = function
+  | Tlist t ->
+      abbrev_found_in_ty decl seen (expand_abbrev t (Sigtype decl :: []))
+  | Tref t ->
+      abbrev_found_in_ty decl seen (expand_abbrev t (Sigtype decl :: []))
+  | Tarrow (arg, ret) ->
+      abbrev_found_in_ty decl seen (expand_abbrev arg (Sigtype decl :: []));
+      abbrev_found_in_ty decl seen (expand_abbrev ret (Sigtype decl :: []))
+  | Ttuple tyl ->
+      List.iter
+        (fun t ->
+          abbrev_found_in_ty decl seen (expand_abbrev t (Sigtype decl :: [])))
+        tyl
+  | Tconstr (name, _) when name_is_checking name seen ->
+      failwith (Printf.sprintf "recursive type abbreviation %s" name)
+  | Tconstr (name, tyl) when name_is_checked name seen ->
+      List.iter
+        (fun t ->
+          abbrev_found_in_ty decl seen (expand_abbrev t (Sigtype decl :: [])))
+        tyl
+  | Tconstr (name, tyl) when is_abbrev name decl ->
+      abbrev_found_in_decl name seen decl;
+      List.iter
+        (fun t ->
+          abbrev_found_in_ty decl seen (expand_abbrev t (Sigtype decl :: [])))
+        tyl
+  | _ -> ()
+
+and abbrev_found_in_decl name seen decl =
+  let rec aux = function
+    | (_, { ast = Dabbrev (n, _, ty); _ }) :: _ when n = name ->
+        let pair = (name, ref Checking) in
+        abbrev_found_in_ty decl (pair :: seen) ty;
+        snd pair := Checked
+    | _ :: rest -> aux rest
+    | [] -> failwith ("name not found abbrev_found_in_decl:" ^ name)
+  in
+  aux decl
+
+let check_recursive_abbrev decl =
+  let rec aux = function
+    | (_, { ast = Dabbrev (name, _, _); _ }) :: rest ->
+        abbrev_found_in_decl name [] decl;
+        aux rest
+    | _ :: rest -> aux rest
+    | [] -> ()
+  in
+  aux decl
+
+let rec is_def name = function
+  | (_, { ast = Drecord (name', _, _); _ }) :: _ when name = name' -> true
+  | (_, { ast = Dvariant (name', _, _); _ }) :: _ when name = name' -> true
+  | _ :: rest -> is_def name rest
+  | [] -> false
+
+let rec def_found_in_ty decl seen = function
+  | Tlist t -> def_found_in_ty decl seen t
+  | Tarrow (arg, ret) ->
+      def_found_in_ty decl seen arg;
+      def_found_in_ty decl seen ret
+  | Ttuple tyl -> List.iter (def_found_in_ty decl seen) tyl
+  | Trecord (name, _, _) when name_is_checking name seen ->
+      failwith (Printf.sprintf "recursive type definition %s" name)
+  | Trecord (name, _, fields) when name_is_checked name seen ->
+      List.iter (def_found_in_ty decl seen) (List.map snd fields)
+  | Trecord (name, _, fields) when is_def name decl ->
+      def_found_in_decl name seen decl;
+      List.iter (abbrev_found_in_ty decl seen) (List.map snd fields)
+  | Tvariant (name, _, _) when name_is_checking name seen ->
+      failwith (Printf.sprintf "recursive type definition %s" name)
+  | Tvariant (name, _, fields) when name_is_checked name seen ->
+      List.iter (def_found_in_ty decl seen) (List.map snd fields)
+  | Tvariant (name, _, fields) when is_def name decl ->
+      def_found_in_decl name seen decl;
+      List.iter (def_found_in_ty decl seen) (List.map snd fields)
+  | Tconstr (name, _) when is_def name decl ->
+      failwith (Printf.sprintf "recursive type definition %s" name)
+  | Tconstr (_, _) as t ->
+      def_found_in_ty decl seen (expand_abbrev t (Sigtype decl :: []))
+  | _ -> ()
+
+and def_found_in_decl name seen decl =
+  let rec aux = function
+    | (_, { ast = Drecord (n, _, fields); _ }) :: _ when n = name ->
+        let pair = (name, ref Checking) in
+        List.iter
+          (fun t -> def_found_in_ty decl (pair :: seen) t)
+          (List.map snd fields);
+        snd pair := Checked
+    | (_, { ast = Dvariant (n, _, fields); _ }) :: _ when n = name ->
+        let pair = (name, ref Checking) in
+        List.iter
+          (fun t -> def_found_in_ty decl (pair :: seen) t)
+          (List.map snd fields);
+        snd pair := Checked
+    | _ :: rest -> aux rest
+    | [] ->
+        print_endline (Printf.sprintf "cycle found %s" name);
+        failwith ("name not found def_found_in_decl:" ^ name)
+  in
+  aux decl
+
+let check_recursive_def decl =
+  let rec aux = function
+    | (_, { ast = Drecord (name, _, _); _ }) :: rest ->
+        def_found_in_decl name [] decl;
+        aux rest
+    | (_, { ast = Dvariant (name, _, _); _ }) :: rest ->
+        def_found_in_decl name [] decl;
+        aux rest
+    | _ :: rest -> aux rest
+    | [] -> ()
+  in
+  aux decl
 
 let rec type_sig_expr env sig_expr =
   match sig_expr.ast with
@@ -1061,8 +1238,142 @@ let rec type_sig_expr env sig_expr =
       let ret = type_sig_expr (Sigmod (name, arg) :: env) ret in
       Sigfun (arg, ret)
   | Sval (name, ty) -> Sigval (name, ty)
-  | Sstruct l -> Sigstruct (List.map (type_sig_expr env) l)
+  | Stype decl -> Sigtype decl
+  | Sstruct l ->
+      let l =
+        List.fold_left
+          (fun add_env sig_expr ->
+            type_sig_expr (add_env @ env) sig_expr :: add_env)
+          [] l
+      in
+      Sigstruct l
   | Smodule (name, sig_expr) -> Sigmod (name, type_sig_expr env sig_expr)
   | Ssig (name, sig_expr) -> Sigmod (name, type_sig_expr env sig_expr)
   | Sinclude path -> access_sig path (Sigstruct env)
-  | _ -> Sigstruct []
+  | Swith (sig_expr, l) ->
+      let sema_sig = type_sig_expr env sig_expr in
+      let f (n, decl) =
+        match find_type n [ sema_sig ] with
+        | Some decl' ->
+            let tyl, ty = type_of_decl' decl
+            and tyl', ty' = type_of_decl' decl' in
+            unify_list tyl tyl';
+            unify ty ty'
+        | None -> failwith "type_sig_expr"
+      in
+      List.iter f l;
+      sema_sig
+
+let rec sigmatch sema_sig1 sema_sig2 =
+  print_endline ("1 " ^ show_tyenv sema_sig1);
+    print_endline ("2 " ^ show_tyenv sema_sig2);
+  match sema_sig2 with
+  | Sigval (name, ty) :: xs ->
+      (match find_val name sema_sig1 with
+      | Some ty' -> unify ty ty'
+      | None -> failwith "cannot find value");
+      sigmatch sema_sig1 xs
+  | Sigtype l :: xs ->
+      (*let f (n, decl) =
+        match find_type n sema_sig1 with
+        | Some decl' ->
+            let tyl, ty = type_of_decl' decl
+            and tyl', ty' = type_of_decl' decl' in
+            unify_list tyl tyl';
+            unify ty ty'
+        | None -> failwith "cannot find type"
+      in
+      List.iter f l;*)
+      ignore l;
+      sigmatch sema_sig1 xs
+  | Sigmod (m, sema_sig2') :: xs ->
+      (*(match find_mod m sema_sig1 with
+        | Some sema_sig1' -> sigmatch [ sema_sig1' ] [ sema_sig2' ]
+        | None -> failwith "sigmatch mod");*)
+      let rec aux ys =
+        match ys with
+        | Sigmod (n, sema_sig1') :: ys when n = m -> (
+            try sigmatch [ instantiate_sema_sig sema_sig1' ] [ instantiate_sema_sig sema_sig2' ] with _ -> aux ys)
+        | Sigstruct l :: ys -> (
+            try sigmatch l [ instantiate_sema_sig sema_sig2' ] with _ -> aux ys)
+        | _ :: ys -> aux ys
+        | [] -> failwith "sigmatch functor"
+      in
+      aux sema_sig1;
+      sigmatch sema_sig1 xs
+  | Sigstruct sema_sig2' :: xs ->
+      sigmatch ( sema_sig1) ( sema_sig2');
+      sigmatch ( sema_sig1) xs
+  | Sigfun (arg2, ret2) :: xs ->
+      let rec aux ys =
+        match ys with
+        | Sigfun (arg1, ret1) :: ys -> (
+            try
+              sigmatch [ instantiate_sema_sig arg2 ] [ instantiate_sema_sig arg1 ];
+              sigmatch [ instantiate_sema_sig ret1 ] [ instantiate_sema_sig ret2 ]
+            with _ -> aux ys)
+        | _ :: ys -> aux ys
+        | [] -> failwith "sigmatch functor"
+      in
+      aux sema_sig1;
+      sigmatch sema_sig1 xs
+  | [] -> ()
+(*
+let rec type_mod_expr env mod_expr =
+  match mod_expr.ast with
+  | Mvar name -> [access_sig [ name ] (Sigstruct env)]
+  | Mexpr expr ->
+      let ty = type_expr env 0 expr in
+      [ Sigval ("_", ty) ]
+  | Mlet l ->
+      let add_env = type_let env l in
+      add_env
+  | Mletrec l ->
+      let add_env = type_letrec env l in
+      add_env
+  | Mtype decl ->
+      let add_env = Sigtype decl :: [] in
+      check_valid_decl decl;
+      check_recursive_abbrev decl;
+      check_recursive_def decl;
+      add_env
+  | Maccess (mod_expr, m) -> (
+      let l = type_mod_expr env mod_expr in
+      match find_mod m l with
+      | Some m -> [m]
+      | None -> failwith "type_mod_expr")
+  | Mfunctor ((n, sig_expr), ret) ->
+      let arg = type_sig_expr env sig_expr in
+      let ret = type_mod_expr (arg :: env) ret in
+      [ Sigfun (Sigmod (n, arg), Sigstruct ret) ]
+  | Mapply (fct, args) ->
+      let fct_sig = type_mod_expr env fct in
+      let sema_sig =
+        List.fold_left
+          (fun fct_sig arg_sig ->
+            match fct_sig with
+            | [Sigfun (param_sig, ret)] ->
+                sigmatch arg_sig [ param_sig ];
+                [ret]
+            | _ -> failwith "type_mod_expr")
+          fct_sig
+          (List.map (fun arg -> type_mod_expr env arg) args)
+      in
+     sema_sig 
+  | Mseal (mod_expr, sig_expr) ->
+      let sema_sig = type_mod_expr env mod_expr in
+      let seal_sig = type_sig_expr env sig_expr in
+      sigmatch sema_sig [ seal_sig ];
+      [ seal_sig ]
+  | Mstruct l ->
+      let l =
+        List.fold_left
+          (fun env mod_expr -> type_mod_expr env mod_expr @ env)
+          env l
+      in
+      [ Sigstruct l ]
+  | Mmodule (name, mod_expr) ->
+      [ Sigmod (name, Sigstruct(type_mod_expr env mod_expr) ) ]
+  | Msig (name, sig_expr) -> [ Sigmod (name, type_sig_expr env sig_expr) ]
+  | _ -> [ Sigstruct [] ]
+*)
