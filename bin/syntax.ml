@@ -31,12 +31,7 @@ and ty =
 and path = string list [@@deriving show]
 
 let is_zero_arity = function
-  | Tunit
-  | Tbool
-  | Tint
-  | Tfloat
-  | Tchar
-  | Tstring -> true
+  | Tunit | Tbool | Tint | Tfloat | Tchar | Tstring -> true
   | _ -> false
 
 type constant =

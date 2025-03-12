@@ -131,6 +131,7 @@ rule token = parse
 | "float" { TFLOAT }
 | "char" { TCHAR }
 | "string" { TSTRING }
+| "list" { TLIST }
 
 | lid as s { LID s }
 | uid as s { UID s }

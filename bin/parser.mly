@@ -8,7 +8,7 @@
 %}
 %token LPAREN "(" RPAREN ")" LBRACK "[" RBRACK "]" LBRACE "{" RBRACE "}"
 %token COLON ":" COMMA "," SEMI ";" SEMISEMI ";;" CONS "::" QUOTE "'" DOT "."
-%token BEGIN END TUNIT TBOOL TINT TFLOAT TSTRING TCHAR OPEN
+%token BEGIN END TUNIT TBOOL TINT TFLOAT TSTRING TCHAR OPEN TLIST
 %token <string> LID UID
 %token WILD "_" AS
 %token <int> INT
@@ -252,7 +252,7 @@ ty_def          : params tyname "=" "{" separated_nonempty_list(";", separated_p
                 | params tyname "=" nonempty_list("|" sum_case { $2 })
                                                     { ($2, make_decl(Dvariant($2,$1,$4)) ($startpos($1)) ($endpos($4))) }
                 | params tyname "=" ty              { ($2, make_decl(Dabbrev($2,$1,$4)) ($startpos($1)) ($endpos($4))) }
-                | params tyname                     { ($2, make_decl(Dabs($2,$1, Tabs (Tvar (ref (Unbound {id=Idstr $2; level= generic})), $1))) ($startpos($1)) ($endpos($2))) }
+                | params tyname                     { ($2, make_decl(Dabs($2,$1, Tvar(ref (Linkto (Tabs (Tvar (ref (Unbound {id=Idstr $2; level= generic})), [])))))) ($startpos($1)) ($endpos($2))) }
 
 ty_def_         : params tyname "=" "{" separated_nonempty_list(";", separated_pair(field, ":", ty)) "}"
                                                     { ($2, make_decl(Drecord($2,$1,$5)) ($startpos($1)) ($endpos($6))) }
@@ -273,9 +273,9 @@ simple_ty       : "(" ty "," separated_nonempty_list(",", ty) ")" tyname
                 | simple_ty tyname                  { Tconstr($2,$1::[]) }
                 | tyname                            { Tconstr($1,[]) }
                 | "(" ty "," separated_nonempty_list(",", ty) ")" path "." tyname
-                                                    { Tpath($6, Tconstr($8,$2::$4)) }
-                | simple_ty path "." tyname                  { Tpath($2, Tconstr($4,$1::[])) }
-                | path "." tyname                            { Tpath($1, Tconstr($3,[])) }
+                                                    { Tvar(ref (Linkto(Tpath($6, Tconstr($8,$2::$4))))) }
+                | simple_ty path "." tyname                  { Tvar(ref (Linkto (Tpath($2, Tconstr($4,$1::[]))))) }
+                | path "." tyname                            { Tvar(ref (Linkto(Tpath($1, Tconstr($3,[]))))) }
                 | TUNIT                             { Tunit }
                 | TBOOL                             { Tbool }
                 | TINT                              { Tint }
@@ -283,6 +283,7 @@ simple_ty       : "(" ty "," separated_nonempty_list(",", ty) ")" tyname
                 | TCHAR                             { Tchar }
                 | TSTRING                           { Tstring }
                 | simple_ty REF                     { Tref $1 }
+                | simple_ty TLIST                   { Tlist $1 }
                 | param                             { $1 }
                 | "(" ty ")"                        { $2 }
 

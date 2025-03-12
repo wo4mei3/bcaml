@@ -63,7 +63,7 @@ let rec type_mod_expr env mod_expr =
       extend_env env [ Sigmod (n, arg) ];
       let ret = type_mod_expr env ret in
       restore_env env;
-      print_endline (show_sema_sig (Sigfun (Sigmod (n, arg), ret)));
+      (*print_endline (show_sema_sig (Sigfun (Sigmod (n, arg), ret)));*)
       Sigfun (Sigmod (n, arg), ret)
   | Mapply (fct, args) ->
       let fct_sig = type_mod_expr env fct in
@@ -72,18 +72,18 @@ let rec type_mod_expr env mod_expr =
           (fun fct_sig arg_sig ->
             match fct_sig with
             | Sigfun (param_sig, ret) ->
-                sigmatch [ arg_sig ] [ param_sig ];
+                sigmatch !env [ arg_sig ] [ param_sig ];
                 instantiate_sema_sig ret
             | _ -> failwith "type_mod_expr")
           fct_sig
           (List.map (fun arg -> type_mod_expr env arg) args)
       in
-      print_endline (show_sema_sig sema_sig);
+      (*print_endline (show_sema_sig sema_sig);*)
       sema_sig
   | Mseal (mod_expr, sig_expr) ->
       let sema_sig = type_mod_expr env mod_expr in
       let seal_sig = type_sig_expr !env sig_expr in
-      sigmatch [ sema_sig ] [ seal_sig ];
+      sigmatch !env [ sema_sig ] [ seal_sig ];
       seal_sig
   | Mstruct l ->
       let l =

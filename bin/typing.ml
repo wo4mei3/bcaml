@@ -91,7 +91,7 @@ let instantiate' id_var_hash level ty =
               let tvar = Tvar (ref (Linkto (new_type_var level))) in
               Hashtbl.add id_var_hash id tvar;
               tvar)
-        | { contents = Linkto ty } -> f ty
+        | { contents = Linkto ty } -> Tvar (ref (Linkto (f ty)))
         | _ -> ty)
     | Tlist ty -> Tlist (f ty)
     | Tref ty -> Tref (f ty)
@@ -106,8 +106,7 @@ let instantiate' id_var_hash level ty =
     | Tvariant (name, tyl, fields) ->
         Tvariant
           (name, List.map f tyl, List.map (fun (n, ty) -> (n, f ty)) fields)
-    | Tabs (ty, tyl) -> 
-      Tabs(f ty, List.map f tyl)
+    | Tabs (ty, tyl) -> Tabs (f ty, List.map f tyl)
     | _ -> ty
   in
   f ty
@@ -171,10 +170,18 @@ let rec access_sig path sema_sig =
   | s :: path, Sigmod (n, sema_sig) when s = n -> access_sig path sema_sig
   | (s :: _ as path), Sigstruct l when Option.is_some (find_mod s l) ->
       access_sig path (Option.get (find_mod s l))
-  | _ :: _, _ ->
+  | s :: _, _ ->
+      print_endline s;
       print_endline (show_tyenv [ sema_sig ]);
       failwith ("invalid path :" ^ show_path path (*^ (show_sema_sig sema_sig)*))
   | [], sema_sig -> instantiate_sema_sig sema_sig
+
+let rec is_unbound_tvar = function
+  | Tvar link -> (
+      match link with
+      | { contents = Unbound _ } -> true
+      | { contents = Linkto ty } -> is_unbound_tvar ty)
+  | _ -> false
 
 let rec occursin id = function
   | Tvar link -> (
@@ -205,75 +212,105 @@ let rec adjustlevel level = function
       List.iter (adjustlevel level) (List.map snd fields)
   | _ -> ()
 
-let rec unify ty1 ty2 =
+let rec unify sema_sig ty1 ty2 =
   match (ty1, ty2) with
   | Tvar link1, Tvar link2 when link1 = link2 -> ()
+  | Tvar ({ contents = Linkto (Tpath (path, Tconstr (name, []))) } as link), ty2
+  | ty2, Tvar ({ contents = Linkto (Tpath (path, Tconstr (name, []))) } as link)
+    ->
+      (*print_endline "aaa";*)
+      let sema_sig' = access_sig path (Sigstruct sema_sig) in
+      let _, ty1 = type_of_decl' (Option.get (find_type name [ sema_sig' ])) in
+      (*print_endline (show_ty ty1);*)
+      unify sema_sig ty1 ty2;
+      link := Linkto ty1
+  | ( Tvar { contents = Linkto (Tabs (Tvar link1, [])) },
+      Tvar { contents = Linkto (Tabs (Tvar link2, [])) } )
+    when link1 = link2 ->
+      ()
+  | ( (Tvar { contents = Linkto (Tabs (Tvar _, [])) } as ty1),
+      (Tvar { contents = Linkto (Tabs (Tvar _, [])) } as ty2) ) ->
+      Printf.printf "Cannot unify types between %s and %s" (show_ty ty1)
+        (show_ty ty2);
+      failwith
+        (Printf.sprintf "Cannot unify types between %s and %s" (pp_ty ty1)
+           (pp_ty ty2))
+  | Tvar ({ contents = Linkto (Tabs (Tvar _, [])) } as link), ty
+  | ty, Tvar ({ contents = Linkto (Tabs (Tvar _, [])) } as link) ->
+      link := Linkto ty
   | Tvar { contents = Linkto t1 }, t2 | t1, Tvar { contents = Linkto t2 } ->
-      unify t1 t2
+      unify sema_sig t1 t2
   | Tvar ({ contents = Unbound { id; level } } as link), ty
   | ty, Tvar ({ contents = Unbound { id; level } } as link) ->
       if occursin id ty then
         failwith
-          (Printf.sprintf "unify error due to ocurr check %s %s" (pp_ty ty1)
-             (pp_ty ty2));
+          (Printf.sprintf "unify sema_sig error due to ocurr check %s %s"
+             (pp_ty ty1) (pp_ty ty2));
       adjustlevel level ty;
       link := Linkto ty
-  | Tlist t1, Tlist t2 -> unify t1 t2
-  | Tref t1, Tref t2 -> unify t1 t2
+  | Tlist t1, Tlist t2 -> unify sema_sig t1 t2
+  | Tref t1, Tref t2 -> unify sema_sig t1 t2
   | Tformat (arg1, ret1), Tformat (arg2, ret2) ->
-      unify arg1 arg2;
-      unify ret1 ret2
+      unify sema_sig arg1 arg2;
+      unify sema_sig ret1 ret2
   | Tarrow (arg1, ret1), Tarrow (arg2, ret2) ->
-      unify arg1 arg2;
-      unify ret1 ret2
-  | Ttuple tyl1, Ttuple tyl2 -> unify_list tyl1 tyl2
+      unify sema_sig arg1 arg2;
+      unify sema_sig ret1 ret2
+  | Ttuple tyl1, Ttuple tyl2 -> unify_list sema_sig tyl1 tyl2
   | Tconstr (name1, tyl1), Tconstr (name2, tyl2) when name1 = name2 ->
-      unify_list tyl1 tyl2
+      unify_list sema_sig tyl1 tyl2
   | Tconstr (name1, tyl1), Trecord (name2, tyl2, _) when name1 = name2 ->
-      unify_list tyl1 tyl2
+      unify_list sema_sig tyl1 tyl2
   | Tconstr (name1, tyl1), Tvariant (name2, tyl2, _) when name1 = name2 ->
-      unify_list tyl1 tyl2
+      unify_list sema_sig tyl1 tyl2
   | Trecord (name1, tyl1, _), Tconstr (name2, tyl2) when name1 = name2 ->
-      unify_list tyl1 tyl2
+      unify_list sema_sig tyl1 tyl2
   | Tvariant (name1, tyl1, _), Tconstr (name2, tyl2) when name1 = name2 ->
-      unify_list tyl1 tyl2
+      unify_list sema_sig tyl1 tyl2
   | Trecord (name1, _, fields1), Trecord (name2, _, fields2) when name1 = name2
     ->
-      unify_list (List.map snd fields1) (List.map snd fields2)
+      unify_list sema_sig (List.map snd fields1) (List.map snd fields2)
   | Tvariant (name1, _, fields1), Tvariant (name2, _, fields2)
     when name1 = name2 ->
-      unify_list (List.map snd fields1) (List.map snd fields2)
-  | Tabs (ty1, tyl1), Tabs (ty2, tyl2)  ->
-      unify ty1 ty2;
-      unify_list tyl1 tyl2
+      unify_list sema_sig (List.map snd fields1) (List.map snd fields2)
+  (*| Tabs (ty1, tyl1), Tabs (ty2, tyl2) ->
+      unify sema_sig ty1 ty2;
+      unify_list sema_sig tyl1 tyl2*)
   | ty1, ty2 when ty1 = ty2 -> ()
   | _ ->
+      Printf.printf "Cannot unify types between %s and %s" (show_ty ty1)
+        (show_ty ty2);
       failwith
         (Printf.sprintf "Cannot unify types between %s and %s" (pp_ty ty1)
            (pp_ty ty2))
 
-and unify_list tyl1 tyl2 = List.iter2 unify tyl1 tyl2
+and unify_list sema_sig tyl1 tyl2 = List.iter2 (unify sema_sig) tyl1 tyl2
 
-let rec expand_abbrev ty env =
+let rec expand_abbrev sema_sig ty env =
   match ty with
   | Tconstr (name, params) ->
       let tyl, ty = type_of_decl env name in
       if List.length params = List.length tyl then (
-        unify_list params tyl;
+        unify_list sema_sig params tyl;
         ty)
       else
         failwith
           ("the number of parameters of type constructor doesn't match:" ^ name)
-  | Tlist t -> Tlist (expand_abbrev t env)
-  | Tref t -> Tref (expand_abbrev t env)
-  | Tarrow (arg, ret) -> Tarrow (expand_abbrev arg env, expand_abbrev ret env)
-  | Ttuple tyl -> Ttuple (List.map (fun t -> expand_abbrev t env) tyl)
+  | Tlist t -> Tlist (expand_abbrev sema_sig t env)
+  | Tref t -> Tref (expand_abbrev sema_sig t env)
+  | Tarrow (arg, ret) ->
+      Tarrow (expand_abbrev sema_sig arg env, expand_abbrev sema_sig ret env)
+  | Ttuple tyl -> Ttuple (List.map (fun t -> expand_abbrev sema_sig t env) tyl)
   | Trecord (name, tyl, fields) ->
       Trecord
-        (name, tyl, List.map (fun (n, t) -> (n, expand_abbrev t env)) fields)
+        ( name,
+          tyl,
+          List.map (fun (n, t) -> (n, expand_abbrev sema_sig t env)) fields )
   | Tvariant (name, tyl, fields) ->
       Tvariant
-        (name, tyl, List.map (fun (n, t) -> (n, expand_abbrev t env)) fields)
+        ( name,
+          tyl,
+          List.map (fun (n, t) -> (n, expand_abbrev sema_sig t env)) fields )
   | _ -> ty
 
 let fields_of_type ty =
@@ -466,8 +503,8 @@ let type_prim level = function
       let remain_ty = new_type_var notgeneric in
       Tarrow (Tformat (remain_ty, Tstring), remain_ty)
 
-let unify_pat pat actual_ty expected_ty =
-  try unify actual_ty expected_ty
+let unify_pat sema_sig pat actual_ty expected_ty =
+  try unify sema_sig actual_ty expected_ty
   with _ ->
     failwith
       (Printf.sprintf
@@ -505,40 +542,40 @@ let rec type_pat env add_env level pat ty =
         | Cstring _ -> Tstring
         | Cchar _ -> Tchar
       in
-      unify_pat pat ty cst_ty;
+      unify_pat env pat ty cst_ty;
       env
   | Ptuple patl ->
       let tyl = List.init (List.length patl) (fun _ -> new_type_var level) in
-      unify (Ttuple tyl) ty;
+      unify env (Ttuple tyl) ty;
       List.fold_left2
         (fun add_env -> type_pat env add_env level)
         add_env patl tyl
   | Pnil ->
-      unify_pat pat ty (Tlist (new_type_var level));
+      unify_pat env pat ty (Tlist (new_type_var level));
       env
   | Pcons (car, cdr) ->
       let ty1 = new_type_var level in
       let ty2 = new_type_var level in
       let add_env = type_pat env add_env level car ty1 in
       let add_env = type_pat env add_env level cdr ty2 in
-      unify_pat pat ty2 (Tlist ty1);
-      unify_pat pat ty ty2;
+      unify_pat env pat ty2 (Tlist ty1);
+      unify_pat env pat ty ty2;
       add_env
   | Pref expr ->
       let ty1 = new_type_var level in
       let add_env = type_pat env add_env level expr ty1 in
-      unify_pat pat ty (Tref ty1);
+      unify_pat env pat ty (Tref ty1);
       add_env
   | Punit ->
-      unify_pat pat ty Tunit;
+      unify_pat env pat ty Tunit;
       add_env
   | Ptag ->
-      unify ty Ttag;
+      unify env ty Ttag;
       add_env
   | Pconstruct (name, pat) -> type_variant_pat env add_env level (name, pat) ty
   | Pconstraint (pat, expected) ->
       let add_env = type_pat env add_env level pat ty in
-      unify_pat pat ty (instantiate level expected);
+      unify_pat env pat ty (instantiate level expected);
       add_env
   | Precord fields -> type_record_pat env add_env level fields ty pat
 
@@ -547,7 +584,7 @@ and type_record_pat env add_env level fields ty pat =
   let record_name = label_belong_to env first_label pat.pos in
   let record_ty = instantiate level (snd (type_of_decl env record_name)) in
   let fields2 = fields_of_type record_ty in
-  unify record_ty ty;
+  unify env record_ty ty;
   try
     List.fold_left
       (fun add_env (name, ty) ->
@@ -567,7 +604,7 @@ and type_record_pat env add_env level fields ty pat =
 and type_variant_pat env add_env level (tag_name, pat) ty =
   let variant_name = tag_belong_to env tag_name pat.pos in
   let _, variant_ty = type_of_decl env variant_name in
-  unify ty (instantiate level variant_ty);
+  unify env ty (instantiate level variant_ty);
   let ty =
     try List.assoc tag_name (fields_of_type variant_ty)
     with Not_found ->
@@ -578,8 +615,8 @@ and type_variant_pat env add_env level (tag_name, pat) ty =
   in
   type_pat env add_env level pat ty
 
-and unify_expr expr actual_ty expected_ty =
-  try unify actual_ty expected_ty
+and unify_expr env expr actual_ty expected_ty =
+  try unify env actual_ty expected_ty
   with _ ->
     failwith
       (Printf.sprintf
@@ -587,12 +624,12 @@ and unify_expr expr actual_ty expected_ty =
          (print_errloc !file expr.pos)
          (pp_ty actual_ty) (pp_ty expected_ty))
 
-and function_error level expr ty =
+and function_error env level expr ty =
   failwith
     (try
        let param_ty = new_type_var level in
        let ret_ty = new_type_var level in
-       unify ty (Tarrow (param_ty, ret_ty));
+       unify env ty (Tarrow (param_ty, ret_ty));
        Printf.sprintf "%s This function is applied to too many arguments.\n"
          (print_errloc !file expr.pos)
      with _ ->
@@ -602,7 +639,7 @@ and function_error level expr ty =
 
 and type_expect env level expr expected_ty =
   match !(expr.ast) with
-  | _ -> unify_expr expr (type_expr env level expr) expected_ty
+  | _ -> unify_expr env expr (type_expr env level expr) expected_ty
 
 and type_expr env level expr =
   match !(expr.ast) with
@@ -640,12 +677,12 @@ and type_expr env level expr =
   | Econs (car, cdr) ->
       let ty = type_expr env level cdr in
       let expected_ty = new_type_var level in
-      unify (Tlist expected_ty) ty;
+      unify env (Tlist expected_ty) ty;
       type_expect env level car expected_ty;
       ty
   | Elist l ->
       let ty = new_type_var level in
-      List.iter (fun expr -> unify ty (type_expr env level expr)) l;
+      List.iter (fun expr -> unify env ty (type_expr env level expr)) l;
       let ty = Tlist ty in
       ty
   | Eref e ->
@@ -768,9 +805,9 @@ and type_expr env level expr =
           (fun fct_ty_ arg_ty ->
             let param_ty = new_type_var level in
             let ret_ty = new_type_var level in
-            (try unify fct_ty_ (Tarrow (param_ty, ret_ty))
-             with _ -> function_error level p fct_ty);
-            unify arg_ty param_ty;
+            (try unify env fct_ty_ (Tarrow (param_ty, ret_ty))
+             with _ -> function_error env level p fct_ty);
+            unify env arg_ty param_ty;
             ret_ty)
           fct_ty args
       in
@@ -868,9 +905,9 @@ and type_expr env level expr =
           (fun fct_ty_ arg_ty ->
             let param_ty = new_type_var level in
             let ret_ty = new_type_var level in
-            (try unify fct_ty_ (Tarrow (param_ty, ret_ty))
-             with _ -> function_error level p fct_ty);
-            unify arg_ty param_ty;
+            (try unify env fct_ty_ (Tarrow (param_ty, ret_ty))
+             with _ -> function_error env level p fct_ty);
+            unify env arg_ty param_ty;
             ret_ty)
           fct_ty args
       in
@@ -882,9 +919,9 @@ and type_expr env level expr =
           (fun fct_ty_ arg_ty ->
             let param_ty = new_type_var level in
             let ret_ty = new_type_var level in
-            (try unify fct_ty_ (Tarrow (param_ty, ret_ty))
-             with _ -> function_error level fct fct_ty);
-            unify arg_ty param_ty;
+            (try unify env fct_ty_ (Tarrow (param_ty, ret_ty))
+             with _ -> function_error env level fct fct_ty);
+            unify env arg_ty param_ty;
             ret_ty)
           fct_ty
           (List.map (type_expr env level) args)
@@ -948,7 +985,7 @@ and type_expr env level expr =
             (fun (pat, e) ->
               let add_env = type_pat env [] level pat arg_ty in
               let ty = type_expr (add_env @ env) level e in
-              unify ty ret_ty)
+              unify env ty ret_ty)
             pat_expr;
           let ty = Tarrow (arg_ty, ret_ty) in
           ty)
@@ -1002,7 +1039,7 @@ and type_record_expr env level fields expr =
   try
     List.iter
       (fun (name, ty) ->
-        unify
+        unify env
           (try List.assoc name fields1
            with Not_found ->
              failwith
@@ -1028,7 +1065,7 @@ and type_variant_expr env level (tag_name, expr) =
            (print_errloc !file expr.pos))
   in
   let ty1 = type_expr env level expr in
-  unify ty ty1;
+  unify env ty ty1;
   variant_ty
 
 let type_let env pat_expr =
@@ -1117,29 +1154,36 @@ let rec is_abbrev name = function
 
 let rec abbrev_found_in_ty decl seen = function
   | Tlist t ->
-      abbrev_found_in_ty decl seen (expand_abbrev t (Sigtype decl :: []))
+      abbrev_found_in_ty decl seen
+        (expand_abbrev (Sigtype decl :: []) t (Sigtype decl :: []))
   | Tref t ->
-      abbrev_found_in_ty decl seen (expand_abbrev t (Sigtype decl :: []))
+      abbrev_found_in_ty decl seen
+        (expand_abbrev (Sigtype decl :: []) t (Sigtype decl :: []))
   | Tarrow (arg, ret) ->
-      abbrev_found_in_ty decl seen (expand_abbrev arg (Sigtype decl :: []));
-      abbrev_found_in_ty decl seen (expand_abbrev ret (Sigtype decl :: []))
+      abbrev_found_in_ty decl seen
+        (expand_abbrev (Sigtype decl :: []) arg (Sigtype decl :: []));
+      abbrev_found_in_ty decl seen
+        (expand_abbrev (Sigtype decl :: []) ret (Sigtype decl :: []))
   | Ttuple tyl ->
       List.iter
         (fun t ->
-          abbrev_found_in_ty decl seen (expand_abbrev t (Sigtype decl :: [])))
+          abbrev_found_in_ty decl seen
+            (expand_abbrev (Sigtype decl :: []) t (Sigtype decl :: [])))
         tyl
   | Tconstr (name, _) when name_is_checking name seen ->
       failwith (Printf.sprintf "recursive type abbreviation %s" name)
   | Tconstr (name, tyl) when name_is_checked name seen ->
       List.iter
         (fun t ->
-          abbrev_found_in_ty decl seen (expand_abbrev t (Sigtype decl :: [])))
+          abbrev_found_in_ty decl seen
+            (expand_abbrev (Sigtype decl :: []) t (Sigtype decl :: [])))
         tyl
   | Tconstr (name, tyl) when is_abbrev name decl ->
       abbrev_found_in_decl name seen decl;
       List.iter
         (fun t ->
-          abbrev_found_in_ty decl seen (expand_abbrev t (Sigtype decl :: [])))
+          abbrev_found_in_ty decl seen
+            (expand_abbrev (Sigtype decl :: []) t (Sigtype decl :: [])))
         tyl
   | _ -> ()
 
@@ -1193,7 +1237,8 @@ let rec def_found_in_ty decl seen = function
   | Tconstr (name, _) when is_def name decl ->
       failwith (Printf.sprintf "recursive type definition %s" name)
   | Tconstr (_, _) as t ->
-      def_found_in_ty decl seen (expand_abbrev t (Sigtype decl :: []))
+      def_found_in_ty decl seen
+        (expand_abbrev (Sigtype decl :: []) t (Sigtype decl :: []))
   | _ -> ()
 
 and def_found_in_decl name seen decl =
@@ -1237,7 +1282,7 @@ let rec type_sig_expr env sig_expr =
       let arg = type_sig_expr env arg in
       let ret = type_sig_expr (Sigmod (name, arg) :: env) ret in
       Sigfun (arg, ret)
-  | Sval (name, ty) -> Sigval (name, ty)
+  | Sval (name, ty) -> Sigval (name, expand_abbrev env ty env)
   | Stype decl -> Sigtype decl
   | Sstruct l ->
       let l =
@@ -1257,35 +1302,35 @@ let rec type_sig_expr env sig_expr =
         | Some decl' ->
             let tyl, ty = type_of_decl' decl
             and tyl', ty' = type_of_decl' decl' in
-            unify_list tyl tyl';
-            unify ty ty'
+            unify_list [ sema_sig ] tyl tyl';
+            unify [ sema_sig ] ty ty'
         | None -> failwith "type_sig_expr"
       in
       List.iter f l;
       sema_sig
 
-let rec sigmatch sema_sig1 sema_sig2 =
+let rec sigmatch env sema_sig1 sema_sig2 =
   print_endline ("1 " ^ show_tyenv sema_sig1);
-    print_endline ("2 " ^ show_tyenv sema_sig2);
+  print_endline ("2 " ^ show_tyenv sema_sig2);
   match sema_sig2 with
   | Sigval (name, ty) :: xs ->
       (match find_val name sema_sig1 with
-      | Some ty' -> unify ty ty'
+      | Some ty' -> unify env ty ty'
       | None -> failwith "cannot find value");
-      sigmatch sema_sig1 xs
+      sigmatch env sema_sig1 xs
   | Sigtype l :: xs ->
-      (*let f (n, decl) =
+      let f (n, decl) =
         match find_type n sema_sig1 with
         | Some decl' ->
             let tyl, ty = type_of_decl' decl
             and tyl', ty' = type_of_decl' decl' in
-            unify_list tyl tyl';
-            unify ty ty'
+            unify_list env tyl tyl';
+            unify env ty ty'
         | None -> failwith "cannot find type"
       in
-      List.iter f l;*)
+      List.iter f l;
       ignore l;
-      sigmatch sema_sig1 xs
+      sigmatch env sema_sig1 xs
   | Sigmod (m, sema_sig2') :: xs ->
       (*(match find_mod m sema_sig1 with
         | Some sema_sig1' -> sigmatch [ sema_sig1' ] [ sema_sig2' ]
@@ -1293,30 +1338,41 @@ let rec sigmatch sema_sig1 sema_sig2 =
       let rec aux ys =
         match ys with
         | Sigmod (n, sema_sig1') :: ys when n = m -> (
-            try sigmatch [ instantiate_sema_sig sema_sig1' ] [ instantiate_sema_sig sema_sig2' ] with _ -> aux ys)
-        | Sigstruct l :: ys -> (
-            try sigmatch l [ instantiate_sema_sig sema_sig2' ] with _ -> aux ys)
-        | _ :: ys -> aux ys
-        | [] -> failwith "sigmatch functor"
-      in
-      aux sema_sig1;
-      sigmatch sema_sig1 xs
-  | Sigstruct sema_sig2' :: xs ->
-      sigmatch ( sema_sig1) ( sema_sig2');
-      sigmatch ( sema_sig1) xs
-  | Sigfun (arg2, ret2) :: xs ->
-      let rec aux ys =
-        match ys with
-        | Sigfun (arg1, ret1) :: ys -> (
             try
-              sigmatch [ instantiate_sema_sig arg2 ] [ instantiate_sema_sig arg1 ];
-              sigmatch [ instantiate_sema_sig ret1 ] [ instantiate_sema_sig ret2 ]
+              sigmatch env
+                [ instantiate_sema_sig sema_sig1' ]
+                [ instantiate_sema_sig sema_sig2' ]
+            with _ -> aux ys)
+        | Sigstruct l :: ys -> (
+            try sigmatch env l [ instantiate_sema_sig sema_sig2' ]
             with _ -> aux ys)
         | _ :: ys -> aux ys
         | [] -> failwith "sigmatch functor"
       in
       aux sema_sig1;
-      sigmatch sema_sig1 xs
+      sigmatch env sema_sig1 xs
+  | Sigstruct sema_sig2' :: xs ->
+      sigmatch env sema_sig1 sema_sig2';
+      sigmatch env sema_sig1 xs
+  | Sigfun (arg2, ret2) :: xs ->
+      let rec aux ys =
+        match ys with
+        | Sigfun (arg1, ret1) :: ys -> (
+            try
+              sigmatch env
+                [ instantiate_sema_sig arg2 ]
+                [ instantiate_sema_sig arg1 ];
+              sigmatch (arg1 :: env)
+                [ instantiate_sema_sig ret1 ]
+                [ instantiate_sema_sig ret2 ]
+            with _ -> aux ys)
+        | _ :: ys -> aux ys
+        | [] ->
+            print_endline ("2 " ^ show_tyenv sema_sig2);
+            failwith "sigmatch functor"
+      in
+      aux sema_sig1;
+      sigmatch env sema_sig1 xs
   | [] -> ()
 (*
 let rec type_mod_expr env mod_expr =
