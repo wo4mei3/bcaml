@@ -1,0 +1,1 @@
+type a = {x:b ref} and b = {y:a ref}

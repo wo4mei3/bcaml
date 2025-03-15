@@ -1,14 +1,13 @@
 signature X = sig
   type t
-  val x : t
 end
 
-module Z:functor (X:X) -> functor(Y:X) -> sig
-  val f : X.t -> Y.t
-end = functor(X : X) -> functor(Y:X) -> struct
+module Z:functor (Z:X) -> functor(Y:X) -> sig
+  val f : Z.t -> Y.t
+end = functor(Z : X) -> functor(Y:X) -> struct
   let f x = x
 end
-
+(*
 module Y:X = struct
   type t = bool
   let x = false 
@@ -72,4 +71,4 @@ functor(M1 :S)->
     struct 
       let f x= x
     end
-*)
+*)*)
