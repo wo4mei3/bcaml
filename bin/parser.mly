@@ -54,34 +54,34 @@
 %right prec_uminus
 %right REF "!" LNOT NOT
 
-%start<mod_expr list> top
-%start<mod_expr list> repl
+%start<bind_expr list> top
+%start<bind_expr list> repl
 
 %%
 
 top             : list(def_) EOF                     { $1 }
 
 repl            : list(def_) SEMISEMI                { $1 }
-                | expr SEMISEMI                      { [make_def(Mexpr $1) ($startpos($1)) ($endpos($2))] }
+                | expr SEMISEMI                      { [make_def(Bexpr $1) ($startpos($1)) ($endpos($2))] }
 
 def_            : TYPE separated_nonempty_list(AND, ty_def)
-                                                    { make_def(Mtype $2)($startpos($1)) ($endpos($2)) }
+                                                    { make_def(Btype $2)($startpos($1)) ($endpos($2)) }
                 | LET separated_nonempty_list(AND, let_def)
-                                                    { make_def(Mlet $2) ($startpos($1)) ($endpos($2)) }
+                                                    { make_def(Blet $2) ($startpos($1)) ($endpos($2)) }
                 | LET REC separated_nonempty_list(AND, let_rec_def)
-                                                    { make_def(Mletrec $3) ($startpos($1)) ($endpos($3)) }
-                | OPEN path                         { make_def(Mopen $2) ($startpos($1)) ($endpos($2)) }                                         
-                | MODULE UID "=" mod_expr           { make_def(Mmodule($2,$4)) ($startpos($1)) ($endpos($2)) }  
+                                                    { make_def(Bletrec $3) ($startpos($1)) ($endpos($3)) }
+                | OPEN path                         { make_def(Bopen $2) ($startpos($1)) ($endpos($2)) }                                         
+                | MODULE UID "=" mod_expr           { make_def(Bmodule($2,$4)) ($startpos($1)) ($endpos($2)) }  
                 | MODULE UID COLON sig_expr "=" mod_expr 
-                { make_def(Mmodule($2,make_def(Mseal($6, $4)) ($startpos($4)) ($endpos($6)))) ($startpos($1)) ($endpos($6)) }  
-                | SIGNATURE UID "=" sig_expr        { make_def(Msig($2,$4)) ($startpos($1)) ($endpos($2)) }  
+                { make_def(Bmodule($2,make_def(Mseal($6, $4)) ($startpos($4)) ($endpos($6)))) ($startpos($1)) ($endpos($6)) }  
+                | SIGNATURE UID "=" sig_expr        { make_def(Bsig($2,$4)) ($startpos($1)) ($endpos($2)) }  
 
-sig_def         : VAL LID COLON ty                  { make_def(Sval($2,$4)) ($startpos($1)) ($endpos($4)) }
+sig_def         : VAL LID COLON ty                  { make_def(Dval($2,$4)) ($startpos($1)) ($endpos($4)) }
                 | TYPE separated_nonempty_list(AND, ty_def)
-                                                    { make_def(Stype $2)($startpos($1)) ($endpos($2)) }
-                | MODULE UID ":" sig_expr           { make_def(Smodule($2,$4)) ($startpos($1)) ($endpos($4)) }  
-                | SIGNATURE UID "=" sig_expr        { make_def(Ssig($2,$4)) ($startpos($1)) ($endpos($4)) }  
-                | INCLUDE path                      { make_def(Sinclude $2) ($startpos($1)) ($endpos($2)) }    
+                                                    { make_def(Dtype $2)($startpos($1)) ($endpos($2)) }
+                | MODULE UID ":" sig_expr           { make_def(Dmodule($2,$4)) ($startpos($1)) ($endpos($4)) }  
+                | SIGNATURE UID "=" sig_expr        { make_def(Dsig($2,$4)) ($startpos($1)) ($endpos($4)) }  
+                | INCLUDE path                      { make_def(Dinclude $2) ($startpos($1)) ($endpos($2)) }    
 
 sig_expr        : UID                               { make_def(Svar $1) ($startpos($1)) ($endpos($1))  }
                 | UID WITH TYPE separated_nonempty_list(AND, ty_def_)
@@ -248,17 +248,17 @@ params          :                                   { [] }
                                                     { $2 }
 
 ty_def          : params tyname "=" "{" separated_nonempty_list(";", separated_pair(field, ":", ty)) "}"
-                                                    { ($2, make_decl(Drecord($2,$1,$5)) ($startpos($1)) ($endpos($6))) }
+                                                    { ($2, make_decl(TDrecord($2,$1,$5)) ($startpos($1)) ($endpos($6))) }
                 | params tyname "=" nonempty_list("|" sum_case { $2 })
-                                                    { ($2, make_decl(Dvariant($2,$1,$4)) ($startpos($1)) ($endpos($4))) }
-                | params tyname "=" ty              { ($2, make_decl(Dabbrev($2,$1,$4)) ($startpos($1)) ($endpos($4))) }
-                | params tyname                     { ($2, make_decl(Dabs($2,$1, Tvar(ref (Linkto (Tabs (Tvar (ref (Unbound {id=Idstr $2; level= generic})), [])))))) ($startpos($1)) ($endpos($2))) }
+                                                    { ($2, make_decl(TDvariant($2,$1,$4)) ($startpos($1)) ($endpos($4))) }
+                | params tyname "=" ty              { ($2, make_decl(TDabbrev($2,$1,$4)) ($startpos($1)) ($endpos($4))) }
+                | params tyname                     { ($2, make_decl(TDabs($2,$1, Tabs (Tvar (ref (Unbound {id=Idstr $2; level= generic})), []))) ($startpos($1)) ($endpos($2))) }
 
 ty_def_         : params tyname "=" "{" separated_nonempty_list(";", separated_pair(field, ":", ty)) "}"
-                                                    { ($2, make_decl(Drecord($2,$1,$5)) ($startpos($1)) ($endpos($6))) }
+                                                    { ($2, make_decl(TDrecord($2,$1,$5)) ($startpos($1)) ($endpos($6))) }
                 | params tyname "=" nonempty_list("|" sum_case { $2 })
-                                                    { ($2, make_decl(Dvariant($2,$1,$4)) ($startpos($1)) ($endpos($4))) }
-                | params tyname "=" ty              { ($2, make_decl(Dabbrev($2,$1,$4)) ($startpos($1)) ($endpos($4))) }
+                                                    { ($2, make_decl(TDvariant($2,$1,$4)) ($startpos($1)) ($endpos($4))) }
+                | params tyname "=" ty              { ($2, make_decl(TDabbrev($2,$1,$4)) ($startpos($1)) ($endpos($4))) }
 
 
 ty              : simple_ty                         { $1 }

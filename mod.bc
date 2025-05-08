@@ -16,7 +16,7 @@ end
 signature Y = sig
   type t = int
 end
-
+(*
 signature Z = sig
   type 'a t
   val x: 'a t
@@ -26,7 +26,7 @@ module W:Z = struct
   type 'a t = 'a list
   let x = 1::[]
 end
-
+*)
 module Y:Y = struct
   type t = int
 end

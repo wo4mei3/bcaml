@@ -166,10 +166,10 @@ and pat' =
 type type_decl = type_decl' ast [@@deriving show]
 
 and type_decl' =
-  | Drecord of string * ty list * (string * ty) list
-  | Dvariant of string * ty list * (string * ty) list
-  | Dabbrev of string * ty list * ty
-  | Dabs of string * ty list * ty
+  | TDrecord of string * ty list * (string * ty) list
+  | TDvariant of string * ty list * (string * ty) list
+  | TDabbrev of string * ty list * ty
+  | TDabs of string * ty list * ty
 [@@deriving show]
 
 type sig_expr = sig_expr' ast
@@ -178,34 +178,45 @@ and sig_expr' =
   | Svar of string
   | Sfunctor of (string * sig_expr) * sig_expr
   | Swith of sig_expr * (string * type_decl) list
-  | Sval of string * ty
-  | Stype of (string * type_decl) list
-  | Sstruct of sig_expr list
-  | Smodule of string * sig_expr
-  | Ssig of string * sig_expr
-  | Sinclude of path
+  | Sstruct of decl_expr list
+[@@deriving show]
+
+and decl_expr = decl_expr' ast
+
+and decl_expr' =
+  | Dval of string * ty
+  | Dtype of (string * type_decl) list
+  | Dmodule of string * sig_expr
+  | Dsig of string * sig_expr
+  | Dinclude of path
 [@@deriving show]
 
 type mod_expr = mod_expr' ast [@@deriving show]
 
 and mod_expr' =
-  | Mexpr of expr
-  | Mlet of (pat * expr) list
-  | Mletrec of (pat * expr) list
-  | Mtype of (string * type_decl) list
   | Mvar of string
   | Maccess of mod_expr * string
   | Mfunctor of (string * sig_expr) * mod_expr
   | Mapply of mod_expr * mod_expr list
   | Mseal of mod_expr * sig_expr
-  | Mstruct of mod_expr list
-  | Mmodule of string * mod_expr
-  | Msig of (string * sig_expr)
-  | Mopen of path
+  | Mstruct of bind_expr list
 [@@deriving show]
 
 and matches = (pat * expr) list [@@deriving show]
 and def_list = mod_expr list [@@deriving show]
+
+and bind_expr = bind_expr' ast [@@deriving show]
+
+and bind_expr' =
+  | Bexpr of expr
+  | Blet of (pat * expr) list
+  | Bletrec of (pat * expr) list
+  | Btype of (string * type_decl) list
+  | Bmodule of string * mod_expr
+  | Bsig of (string * sig_expr)
+  | Bopen of path
+[@@deriving show]
+
 
 type sema_sig =
   | Sigval of (string * ty)
@@ -215,42 +226,38 @@ type sema_sig =
   | Sigfun of sema_sig * sema_sig
 [@@deriving show]
 
-type tyenv = sema_sig list [@@deriving show]
+type atomic_sig =
+  | AtomSig_value of ty
+  | AtomSig_type of type_decl
+  | AtomSig_module of compound_sig
+[@@deriving show]
+
+and compound_sig =
+  | ComSig_struct of (string * atomic_sig) list
+  | ComSig_fun of (string * atomic_sig) * compound_sig
+[@@deriving show]
+
+type tyenv = (string * atomic_sig) list [@@deriving show]
 
 let rec find_val n = function
-  | Sigval (name, ty) :: _ when n = name -> Some ty
-  | Sigstruct l :: _ when Option.is_some (find_val n l) -> find_val n l
-  | Sigmod (_, Sigstruct l) :: _ when Option.is_some (find_val n l) ->
-      find_val n l
+  | (name, AtomSig_value ty) :: _ when n = name -> Some ty
   | _ :: xs -> find_val n xs
   | [] -> None
 
 let rec find_type n = function
-  | Sigtype l :: _ when List.mem_assoc n l -> Some (List.assoc n l)
-  | Sigstruct l :: _ when Option.is_some (find_type n l) -> find_type n l
-  | Sigmod (_, Sigstruct l) :: _ when Option.is_some (find_type n l) ->
-      find_type n l
+  | (name, AtomSig_type decl) :: _ when n = name -> Some decl
   | _ :: xs -> find_type n xs
   | [] -> None
 
 let rec find_mod n = function
-  | (Sigmod (name, _) as m) :: _ when n = name -> Some m
-  | Sigstruct l :: _ when Option.is_some (find_mod n l) -> find_mod n l
-  | Sigmod (_, Sigstruct l) :: _ when Option.is_some (find_mod n l) ->
-      find_mod n l
+  | (name, AtomSig_module compound_sig) :: _ when n = name -> Some compound_sig
   | _ :: xs -> find_mod n xs
   | [] -> None
 
-let rec find_fun n = function
-  | (Sigfun (_, Sigmod (name, _)) as m) :: _ when n = name -> Some m
-  | Sigstruct l :: _ when Option.is_some (find_fun n l) -> find_fun n l
-  | Sigmod (_, Sigstruct l) :: _ when Option.is_some (find_fun n l) ->
-      find_fun n l
-  | _ :: xs -> find_fun n xs
-  | [] -> None
+let get_struct = function ComSig_struct l -> l | _ -> failwith "get_struct"
 
-let get_struct = function
-  | Sigmod (_, Sigstruct l) -> l
+let get_functor = function
+  | ComSig_fun (arg, ret) -> (arg, ret)
   | _ -> failwith "get_struct"
 
 let get_constant = function

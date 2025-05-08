@@ -70,29 +70,29 @@ let rec pp_ty = function
 
 let pp_decl decl =
   match decl.ast with
-  | Drecord (n, [], (name, ty) :: []) ->
+  | TDrecord (n, [], (name, ty) :: []) ->
       "type " ^ n ^ " = {" ^ name ^ " : " ^ pp_ty ty ^ "}"
-  | Drecord (n, x :: [], (name, ty) :: []) ->
+  | TDrecord (n, x :: [], (name, ty) :: []) ->
       "type " ^ pp_ty x ^ " " ^ n ^ " = {" ^ name ^ " : " ^ pp_ty ty ^ "}"
-  | Drecord (n, x :: xl, (name, ty) :: []) ->
+  | TDrecord (n, x :: xl, (name, ty) :: []) ->
       let pp_x = pp_ty x in
       "type " ^ "(" ^ pp_x
       ^ List.fold_left (fun s x -> s ^ "," ^ pp_ty x) "" xl
       ^ ")" ^ " " ^ n ^ " = {" ^ name ^ " : " ^ pp_ty ty ^ "}"
-  | Drecord (n, [], (name, ty) :: tl) ->
+  | TDrecord (n, [], (name, ty) :: tl) ->
       let rec pp_fields = function
         | [] -> ""
         | (name, ty) :: xl -> "; " ^ name ^ " : " ^ pp_ty ty ^ pp_fields xl
       in
       "type " ^ n ^ " = {" ^ name ^ " : " ^ pp_ty ty ^ pp_fields tl ^ "}"
-  | Drecord (n, x :: [], (name, ty) :: tl) ->
+  | TDrecord (n, x :: [], (name, ty) :: tl) ->
       let rec pp_fields = function
         | [] -> ""
         | (name, ty) :: xl -> "; " ^ name ^ " : " ^ pp_ty ty ^ pp_fields xl
       in
       "type " ^ pp_ty x ^ " " ^ n ^ " = {" ^ name ^ " : " ^ pp_ty ty
       ^ pp_fields tl ^ "}"
-  | Drecord (n, x :: xl, (name, ty) :: tl) ->
+  | TDrecord (n, x :: xl, (name, ty) :: tl) ->
       let rec pp_fields = function
         | [] -> ""
         | (name, ty) :: xl -> "; " ^ name ^ " : " ^ pp_ty ty ^ pp_fields xl
@@ -101,29 +101,29 @@ let pp_decl decl =
       "type " ^ "(" ^ pp_x
       ^ List.fold_left (fun s x -> s ^ "," ^ pp_ty x) "" xl
       ^ ")" ^ " " ^ n ^ " = {" ^ name ^ " : " ^ pp_ty ty ^ pp_fields tl ^ "}"
-  | Dvariant (n, [], (name, Ttag) :: []) -> "type " ^ n ^ " = | " ^ name
-  | Dvariant (n, x :: [], (name, Ttag) :: []) ->
+  | TDvariant (n, [], (name, Ttag) :: []) -> "type " ^ n ^ " = | " ^ name
+  | TDvariant (n, x :: [], (name, Ttag) :: []) ->
       "type " ^ pp_ty x ^ " " ^ n ^ " = | " ^ name
-  | Dvariant (n, x :: xl, (name, Ttag) :: []) ->
+  | TDvariant (n, x :: xl, (name, Ttag) :: []) ->
       let pp_x = pp_ty x in
       "type " ^ "(" ^ pp_x
       ^ List.fold_left (fun s x -> s ^ "," ^ pp_ty x) "" xl
       ^ ")" ^ " " ^ n ^ " = | " ^ name
-  | Dvariant (n, [], (name, Ttag) :: tl) ->
+  | TDvariant (n, [], (name, Ttag) :: tl) ->
       let rec pp_fields = function
         | [] -> ""
         | (name, Ttag) :: xl -> " | " ^ name ^ pp_fields xl
         | (name, ty) :: xl -> " | " ^ name ^ " of " ^ pp_ty ty ^ pp_fields xl
       in
       "type " ^ n ^ " = | " ^ name ^ pp_fields tl
-  | Dvariant (n, x :: [], (name, Ttag) :: tl) ->
+  | TDvariant (n, x :: [], (name, Ttag) :: tl) ->
       let rec pp_fields = function
         | [] -> ""
         | (name, Ttag) :: xl -> " | " ^ name ^ pp_fields xl
         | (name, ty) :: xl -> " | " ^ name ^ " of " ^ pp_ty ty ^ pp_fields xl
       in
       "type " ^ pp_ty x ^ " " ^ n ^ " = | " ^ name ^ pp_fields tl
-  | Dvariant (n, x :: xl, (name, Ttag) :: tl) ->
+  | TDvariant (n, x :: xl, (name, Ttag) :: tl) ->
       let rec pp_fields = function
         | [] -> ""
         | (name, Ttag) :: xl -> " | " ^ name ^ pp_fields xl
@@ -133,23 +133,23 @@ let pp_decl decl =
       "type " ^ "(" ^ pp_x
       ^ List.fold_left (fun s x -> s ^ "," ^ pp_ty x) "" xl
       ^ ")" ^ " " ^ n ^ " = | " ^ name ^ pp_fields tl
-  | Dvariant (n, [], (name, ty) :: []) ->
+  | TDvariant (n, [], (name, ty) :: []) ->
       "type " ^ name ^ " = | " ^ n ^ " of " ^ pp_ty ty
-  | Dvariant (n, x :: [], (name, ty) :: []) ->
+  | TDvariant (n, x :: [], (name, ty) :: []) ->
       "type " ^ pp_ty x ^ " " ^ n ^ " = | " ^ name ^ " of " ^ pp_ty ty
-  | Dvariant (n, x :: xl, (name, ty) :: []) ->
+  | TDvariant (n, x :: xl, (name, ty) :: []) ->
       let pp_x = pp_ty x in
       "type " ^ "(" ^ pp_x
       ^ List.fold_left (fun s x -> s ^ "," ^ pp_ty x) "" xl
       ^ ")" ^ " " ^ n ^ " = | " ^ name ^ " of " ^ pp_ty ty
-  | Dvariant (n, [], (name, ty) :: tl) ->
+  | TDvariant (n, [], (name, ty) :: tl) ->
       let rec pp_fields = function
         | [] -> ""
         | (name, Ttag) :: xl -> " | " ^ name ^ pp_fields xl
         | (name, ty) :: xl -> " | " ^ name ^ " of " ^ pp_ty ty ^ pp_fields xl
       in
       "type " ^ n ^ " = | " ^ name ^ " of " ^ pp_ty ty ^ pp_fields tl
-  | Dvariant (n, x :: [], (name, ty) :: tl) ->
+  | TDvariant (n, x :: [], (name, ty) :: tl) ->
       let rec pp_fields = function
         | [] -> ""
         | (name, Ttag) :: xl -> " | " ^ name ^ pp_fields xl
@@ -157,7 +157,7 @@ let pp_decl decl =
       in
       "type " ^ pp_ty x ^ " " ^ n ^ " = | " ^ name ^ " of " ^ pp_ty ty
       ^ pp_fields tl
-  | Dvariant (n, x :: xl, (name, ty) :: tl) ->
+  | TDvariant (n, x :: xl, (name, ty) :: tl) ->
       let rec pp_fields = function
         | [] -> ""
         | (name, Ttag) :: xl -> " | " ^ name ^ pp_fields xl
@@ -167,9 +167,9 @@ let pp_decl decl =
       "type " ^ "(" ^ pp_x
       ^ List.fold_left (fun s x -> s ^ "," ^ pp_ty x) "" xl
       ^ ")" ^ " " ^ n ^ " = | " ^ name ^ " of " ^ pp_ty ty ^ pp_fields tl
-  | Dabbrev (n, [], ty) -> "type " ^ n ^ " = " ^ pp_ty ty
-  | Dabbrev (n, x :: [], ty) -> "type " ^ pp_ty x ^ " " ^ n ^ " = " ^ pp_ty ty
-  | Dabbrev (n, x :: xl, ty) ->
+  | TDabbrev (n, [], ty) -> "type " ^ n ^ " = " ^ pp_ty ty
+  | TDabbrev (n, x :: [], ty) -> "type " ^ pp_ty x ^ " " ^ n ^ " = " ^ pp_ty ty
+  | TDabbrev (n, x :: xl, ty) ->
       let pp_x = pp_ty x in
       "type " ^ "(" ^ pp_x
       ^ List.fold_left (fun s x -> s ^ "," ^ pp_ty x) "" xl
@@ -223,21 +223,27 @@ let pp_val expr =
   in
   aux expr 0
 
-let rec pp_sema_sig sema_sig =
+let rec pp_atomic_sig sema_sig =
   let ret =
     match sema_sig with
-    | Sigval (n, ty) -> "val " ^ n ^ " : " ^ pp_ty ty
-    | Sigtype l ->
-        List.fold_left (fun s (_, decl) -> s ^ "\n" ^ pp_decl decl) "" l
-    | Sigmod (n, env) -> "signature " ^ n ^ " = sig " ^ pp_sema_sig env ^ " end"
-    | Sigstruct env -> "sig " ^ pp_env env ^ " end"
-    | Sigfun (Sigmod (n, arg), Sigmod (n1, ret)) ->
-        "signature " ^ n1 ^ " = functor (" ^ n ^ ": " ^ pp_sema_sig arg
-        ^ " ) -> " ^ pp_sema_sig ret
-    | _ -> ""
+    | (n, AtomSig_value ty) -> "val " ^ n ^ " : " ^ pp_ty ty
+    | (_, AtomSig_type decl) ->
+        pp_decl decl
+    | (n, AtomSig_module compound_sig) -> "signature " ^ n ^ " = " ^ pp_compound_sig compound_sig
+  in
+  reset_tvar_name ();
+  ret
+
+and pp_compound_sig sema_sig =
+  let ret =
+    match sema_sig with
+    | ComSig_struct env -> "sig " ^ pp_env env ^ " end"
+    | ComSig_fun((n,arg),ret) ->
+        " functor (" ^ n ^ ": " ^ pp_compound_sig (ComSig_struct[(n, arg)])
+        ^ " ) -> " ^ pp_compound_sig ret
   in
   reset_tvar_name ();
   ret
 
 and pp_env env =
-  List.fold_left (fun s sema_sig -> s ^ "\n" ^ pp_sema_sig sema_sig) "" env
+  List.fold_left (fun s sema_sig -> s ^ "\n" ^ pp_atomic_sig sema_sig) "" env
