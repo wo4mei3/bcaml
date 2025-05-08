@@ -2,7 +2,7 @@ signature X = sig
   type t
 end
 
-module Z:functor (Z:X) -> functor(Y:X) -> sig
+module U:functor (Z:X) -> functor(Y:X) -> sig
   val f : Z.t -> Y.t
 end = functor(Z : X) -> functor(Y:X) -> struct
   let f x = x

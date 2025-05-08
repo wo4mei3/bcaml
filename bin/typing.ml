@@ -88,7 +88,7 @@ let instantiate' id_var_hash level ty =
           -> (
             try Hashtbl.find id_var_hash id
             with Not_found ->
-              let tvar = Tvar (ref (Linkto (new_type_var level))) in
+              let tvar = new_type_var level in
               Hashtbl.add id_var_hash id tvar;
               tvar)
         | { contents = Linkto ty } -> Tvar (ref (Linkto (f ty)))
@@ -113,51 +113,23 @@ let instantiate' id_var_hash level ty =
 
 let instantiate level ty = instantiate' (Hashtbl.create 10) level ty
 
-let instantiate_sema_sig sema_sig =
-  let id_var_hash = Hashtbl.create 10 in
-  let rec f id_var_hash = function
-    | Sigval (n, ty) -> Sigval (n, instantiate' id_var_hash 1 ty)
-    | Sigtype l ->
-        Sigtype (List.map (fun (n, decl) -> (n, g id_var_hash decl)) l)
-    | Sigmod (n, sema_sig) -> Sigmod (n, f id_var_hash sema_sig)
-    | Sigstruct l -> Sigstruct (List.map (f id_var_hash) l)
-    | Sigfun (arg, ret) -> Sigfun (f id_var_hash arg, f id_var_hash ret)
-  and g id_var_hash = function
-    | { ast = TDrecord (n, tyl, fields); pos } -> (
-        match instantiate' id_var_hash 1 (Trecord (n, tyl, fields)) with
-        | Trecord (n, tyl, fields) -> { ast = TDrecord (n, tyl, fields); pos }
-        | _ -> failwith "instantiate_sema_sig")
-    | { ast = TDvariant (n, tyl, fields); pos } -> (
-        match instantiate' id_var_hash 1 (Tvariant (n, tyl, fields)) with
-        | Tvariant (n, tyl, fields) -> { ast = TDvariant (n, tyl, fields); pos }
-        | _ -> failwith "instantiate_sema_sig")
-    | { ast = TDabbrev (n, tyl, ty); pos } -> (
-        match
-          instantiate' id_var_hash 1 (Trecord (n, tyl, [ ("temp", ty) ]))
-        with
-        | Trecord (n, tyl, [ ("temp", ty) ]) ->
-            { ast = TDabbrev (n, tyl, ty); pos }
-        | _ -> failwith "instantiate_sema_sig")
-    | { ast = TDabs (n, tyl, ty); pos } ->
-        { ast = TDabs (n, tyl, instantiate' id_var_hash 1 ty); pos }
-  in
-  f id_var_hash sema_sig
-
 let type_of_decl' = function
   | { ast = TDrecord (n, tyl, fields); _ } -> (
-      match instantiate 1 (Trecord (n, tyl, fields)) with
+      match instantiate generic (Trecord (n, tyl, fields)) with
       | Trecord (_, tyl, _) as ty -> (tyl, ty)
       | _ -> failwith "type_of_decl")
   | { ast = TDvariant (n, tyl, fields); _ } -> (
-      match instantiate 1 (Tvariant (n, tyl, fields)) with
+      match instantiate generic (Tvariant (n, tyl, fields)) with
       | Tvariant (_, tyl, _) as ty -> (tyl, ty)
       | _ -> failwith "type_of_decl")
   | { ast = TDabbrev (n, tyl, ty); _ } -> (
-      match instantiate 1 (Trecord (n, tyl, [ ("temp", ty) ])) with
+      match instantiate generic (Trecord (n, tyl, [ ("temp", ty) ])) with
       | Trecord (_, tyl, [ ("temp", ty) ]) -> (tyl, ty)
       | _ -> failwith "type_of_decl")
-  | { ast = TDabs (_, tyl, ty); _ } -> (tyl, ty)
-
+  | { ast = TDabs (_, tyl, ty); _ } -> (
+      match instantiate generic (Trecord ("_", tyl, [ ("temp", ty) ])) with
+      | Trecord (_, tyl, [ ("temp", ty) ]) -> (tyl, ty)
+      | _ -> failwith "type_of_decl")
 let rec type_of_decl env name =
   match env with
   | (n, AtomSig_type decl) :: _ when n = name ->
@@ -209,24 +181,24 @@ let rec adjustlevel level = function
         let decl =
           match decl with
           | { ast = TDrecord (n, tyl, fields); pos } -> (
-              match instantiate' id_var_hash 1 (Trecord (n, tyl, fields)) with
+              match instantiate' id_var_hash generic (Trecord (n, tyl, fields)) with
               | Trecord (n, tyl, fields) ->
                   { ast = TDrecord (n, tyl, fields); pos }
               | _ -> failwith "instantiate_sema_sig")
           | { ast = TDvariant (n, tyl, fields); pos } -> (
-              match instantiate' id_var_hash 1 (Tvariant (n, tyl, fields)) with
+              match instantiate' id_var_hash generic (Tvariant (n, tyl, fields)) with
               | Tvariant (n, tyl, fields) ->
                   { ast = TDvariant (n, tyl, fields); pos }
               | _ -> failwith "instantiate_sema_sig")
           | { ast = TDabbrev (n, tyl, ty); pos } -> (
               match
-                instantiate' id_var_hash 1 (Trecord (n, tyl, [ ("temp", ty) ]))
+                instantiate' id_var_hash generic (Trecord (n, tyl, [ ("temp", ty) ]))
               with
               | Trecord (n, tyl, [ ("temp", ty) ]) ->
                   { ast = TDabbrev (n, tyl, ty); pos }
               | _ -> failwith "instantiate_sema_sig")
           | { ast = TDabs (n, tyl, ty); pos } ->
-              { ast = TDabs (n, tyl, instantiate' id_var_hash 1 ty); pos }
+              { ast = TDabs (n, tyl, instantiate' id_var_hash generic ty); pos }
         in
         (n, AtomSig_type decl)
     | n, AtomSig_module compound_sig ->
@@ -239,12 +211,12 @@ let rec adjustlevel level = function
   and instantiate_compound_sub id_var_hash = function
     | ComSig_struct l ->
         ComSig_struct
-          (
-             (List.map (instantiate_atomic_sub id_var_hash) ( l)))
+          
+             (List.map (instantiate_atomic_sub id_var_hash) l)
     | ComSig_fun ((name, atomic_sig), compound_sig) ->
         ComSig_fun
           ( 
-              (instantiate_atomic_sub id_var_hash ( (name, atomic_sig))),
+              instantiate_atomic_sub id_var_hash  (name, atomic_sig),
             instantiate_compound_sub id_var_hash compound_sig )
 
   let instantiate_atomic = instantiate_atomic_sub (Hashtbl.create 10)
@@ -254,14 +226,15 @@ let rec adjustlevel level = function
   let rec access_atomic path sema_sig =
     match (path, sema_sig) with
     | s :: path, (n, AtomSig_module compound_sig) when s = n ->
-        access_compound path ( compound_sig)
+        access_compound path compound_sig
+    | [], (_, AtomSig_module compound_sig) -> instantiate_compound compound_sig
     | _ -> failwith ("invalid path" ^ show_path path)
 
   and access_compound path sema_sig =
     match (path, sema_sig) with
     | s :: path, ComSig_struct l when List.mem_assoc s l ->
-        access_atomic path ( (s, List.assoc s l))
-    | [], sema_sig ->  (instantiate_compound sema_sig)
+        access_atomic path (s, List.assoc s l)
+    | [], sema_sig ->  instantiate_compound sema_sig
     | _ -> failwith ("invalid path" ^ show_path path)
 
 
@@ -274,19 +247,22 @@ let rec unify env ty1 ty2 =
   | Tvar link1, Tvar link2 when link1 = link2 -> ()
   | Tpath (path, Tconstr (name, [])), ty2 | ty2, Tpath (path, Tconstr (name, []))
     ->
-      (*print_endline "aaa";*)
-      let compound_sig = access_compound path (ComSig_struct env) in
+      let compound_sig =  access_compound path (ComSig_struct env) in
       let _, ty1 = type_of_decl' (Option.get (find_type name  (get_struct compound_sig ))) in
       (*print_endline (show_ty ty1);*)
-      unify env ty1 ty2
+      (try unify env ty1 ty2 with _ ->
+            Printf.printf "Cannot unify types between %s and %s" (pp_ty ty1)
+        (pp_ty ty2);
+      failwith
+        (Printf.sprintf "Cannot unify types between %s and %s" (pp_ty ty1)
+           (pp_ty ty2)))
   | Tabs (Tvar link1, []), Tabs (Tvar link2, []) when link1 = link2 -> ()
   | Tabs (Tvar _, []), Tabs (Tvar _, []) ->
-      Printf.printf "Cannot unify types between %s and %s" (show_ty ty1)
-        (show_ty ty2);
+      Printf.printf "Cannot unify types between %s and %s" (pp_ty ty1)
+        (pp_ty ty2);
       failwith
         (Printf.sprintf "Cannot unify types between %s and %s" (pp_ty ty1)
            (pp_ty ty2))
-  | Tabs (Tvar _, []), _ | _, Tabs (Tvar _, []) -> ()
   | Tvar { contents = Linkto t1 }, t2 | t1, Tvar { contents = Linkto t2 } ->
       unify env t1 t2
   | Tvar ({ contents = Unbound { id; level } } as link), ty
@@ -1319,16 +1295,16 @@ let rec type_decl_expr env decl_expr =
   match decl_expr.ast with
   | Dval (name, ty) -> [(name, AtomSig_value(expand_abbrev env ty))]
   | Dtype decl -> (List.map (fun (n, d) -> (n, AtomSig_type d)) decl)
-  | Dmodule (name, sig_expr) -> [ (name, AtomSig_module (type_sig_expr env sig_expr))]
-  | Dsig (name, sig_expr) -> [(name,AtomSig_module (type_sig_expr env sig_expr))]
+  | Dmodule (name, sig_expr) -> [ (name, AtomSig_module (type_sig_expr env sig_expr ))]
+  | Dsig (name, sig_expr) -> [(name,AtomSig_module (type_sig_expr env sig_expr ))]
   | Dinclude path -> get_struct(access_compound path (ComSig_struct env))
 
-and type_sig_expr env sig_expr =
+and type_sig_expr env sig_expr  =
   match sig_expr.ast with
-  | Svar name -> access_compound [ name ] (ComSig_struct env)
+  | Svar name -> instantiate_compound (access_compound [ name ] (ComSig_struct env))
   | Sfunctor ((name, arg), ret) ->
-      let arg = type_sig_expr env arg in
-      let ret = type_sig_expr ((name, AtomSig_module arg) :: env) ret in
+      let arg = type_sig_expr env arg  in
+      let ret = type_sig_expr ((name, AtomSig_module arg) :: env) ret  in
       ComSig_fun ((name,AtomSig_module arg), ret)
   | Sstruct l ->
       let l =
@@ -1339,7 +1315,7 @@ and type_sig_expr env sig_expr =
       in
       ComSig_struct l
   | Swith (sig_expr, l) ->
-      let sema_sig = type_sig_expr env sig_expr in
+      let sema_sig = type_sig_expr env sig_expr  in
       let f (n, decl) =
         match find_type n  (get_struct sema_sig ) with
         | Some decl' ->
@@ -1370,7 +1346,7 @@ and type_sig_expr env sig_expr =
     | (name, AtomSig_module compound_sig) :: xs ->
         (match find_mod name sema_sig1 with
         | Some compound_sig' ->
-            compoundsigmatch env compound_sig compound_sig'
+            compoundsigmatch env (instantiate_compound compound_sig) (instantiate_compound compound_sig')
         | None -> failwith "cannot find value");
         atomicsigmatch env sema_sig1 xs
     | [] -> ()

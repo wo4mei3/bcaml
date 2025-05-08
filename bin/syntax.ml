@@ -218,13 +218,6 @@ and bind_expr' =
 [@@deriving show]
 
 
-type sema_sig =
-  | Sigval of (string * ty)
-  | Sigtype of (string * type_decl) list
-  | Sigmod of (string * sema_sig)
-  | Sigstruct of sema_sig list
-  | Sigfun of sema_sig * sema_sig
-[@@deriving show]
 
 type atomic_sig =
   | AtomSig_value of ty

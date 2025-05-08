@@ -65,6 +65,7 @@ let rec pp_ty = function
       ^ ") " ^ name
   | Tunknown -> "Tunknown"
   | Ttag -> "Ttag"
+  | Tpath (path, ty) -> String.concat "." path ^ "." ^ pp_ty ty 
   | ty -> Printf.sprintf "%s" (show_ty ty)
 (*| ty -> failwith (Printf.sprintf "pp_ty %s" (show_ty ty))*)
 
@@ -174,6 +175,13 @@ let pp_decl decl =
       "type " ^ "(" ^ pp_x
       ^ List.fold_left (fun s x -> s ^ "," ^ pp_ty x) "" xl
       ^ ")" ^ " " ^ n ^ " = " ^ pp_ty ty
+  | TDabs (n, [], _) -> "type " ^ n 
+  | TDabs (n, x :: [], _) -> "type " ^ pp_ty x ^ " " ^ n 
+  | TDabs (n, x :: xl, _) ->
+      let pp_x = pp_ty x in
+      "type " ^ "(" ^ pp_x
+      ^ List.fold_left (fun s x -> s ^ "," ^ pp_ty x) "" xl
+      ^ ")" ^ " " ^ n 
   | _ -> failwith "pp_tydecl"
 
 let pp_cst = function
@@ -229,6 +237,7 @@ let rec pp_atomic_sig sema_sig =
     | (n, AtomSig_value ty) -> "val " ^ n ^ " : " ^ pp_ty ty
     | (_, AtomSig_type decl) ->
         pp_decl decl
+    | ("_", AtomSig_module compound_sig) ->  pp_compound_sig compound_sig
     | (n, AtomSig_module compound_sig) -> "signature " ^ n ^ " = " ^ pp_compound_sig compound_sig
   in
   reset_tvar_name ();
@@ -237,13 +246,13 @@ let rec pp_atomic_sig sema_sig =
 and pp_compound_sig sema_sig =
   let ret =
     match sema_sig with
-    | ComSig_struct env -> "sig " ^ pp_env env ^ " end"
+    | ComSig_struct env -> "sig" ^ pp_env env ^ " end"
     | ComSig_fun((n,arg),ret) ->
-        " functor (" ^ n ^ ": " ^ pp_compound_sig (ComSig_struct[(n, arg)])
-        ^ " ) -> " ^ pp_compound_sig ret
+        " functor (" ^ n  ^ ": " ^ pp_atomic_sig ("_", arg)
+        ^ " ) -> \n" ^ pp_compound_sig ret
   in
   reset_tvar_name ();
   ret
 
 and pp_env env =
-  List.fold_left (fun s sema_sig -> s ^ "\n" ^ pp_atomic_sig sema_sig) "" env
+  List.fold_left (fun s sema_sig -> s ^ " " ^ pp_atomic_sig sema_sig) "" env

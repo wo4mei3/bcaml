@@ -3,30 +3,28 @@ open Syntax
 open Typing
 open Printer
 
-let debug = ref false
+let is_repl = ref false
 let parser = ref Parser.top
 let fnames = ref []
 let extend_env env add_env = env := add_env @ !env
 let restore_env env = env := List.tl !env
 
-let if_debug f =
-  if !debug then (
-    parser := Parser.repl;
+let if_is_repl f =
+  if !is_repl then (
     f ())
-  else parser := Parser.top
-
+  
 let rec type_bind_expr env mod_expr =
   match mod_expr.ast with
   | Bexpr expr ->
       let ty = type_expr !env 0 expr in
-      (*if_debug (fun () ->
+      (*if_is_repl (fun () ->
           print_endline ("- : " ^ pp_ty ty ^ " = " ^ pp_val expr));*)
       [("_", AtomSig_value ty)]
   | Blet l ->
       let add_env = type_let !env l in
       (*List.iter
         (fun (name, expr) ->
-          if_debug (fun () ->
+          if_is_repl (fun () ->
               print_endline
                 ("val " ^ name ^ " = " ^ pp_val expr ^ " : "
                 ^ pp_ty (Option.get (find_val name add_env)))))
@@ -37,7 +35,7 @@ let rec type_bind_expr env mod_expr =
       let add_env = type_letrec !env l in
       (*List.iter
         (fun (name, expr) ->
-          if_debug (fun () ->
+          if_is_repl (fun () ->
               print_endline
                 ("val " ^ name ^ " = " ^ pp_val expr ^ " : "
                 ^ pp_ty (Option.get (find_val name add_env)))))
@@ -49,25 +47,28 @@ let rec type_bind_expr env mod_expr =
       check_valid_decl add_env;
       check_recursive_abbrev add_env;
       check_recursive_def add_env;
-      if_debug (fun () -> print_endline (pp_env add_env));
+      if_is_repl (fun () -> print_endline (pp_env add_env));
       extend_env env add_env;
        add_env
   | Bmodule (name, mod_expr) ->
-      let atomic_sig =  (name, AtomSig_module (type_mod_expr env mod_expr)) in
+      let atomic_sig =  (name, AtomSig_module (type_mod_expr env mod_expr )) in
       extend_env env [ atomic_sig ];
+      if_is_repl (fun () -> print_endline (pp_atomic_sig  atomic_sig));
       [atomic_sig]
   | Bsig (name, sig_expr) ->
-      let atomic_sig =  (name,AtomSig_module (type_sig_expr !env sig_expr)) in
+      let atomic_sig =  (name,AtomSig_module (type_sig_expr !env sig_expr )) in
       extend_env env [ atomic_sig ];
+      if_is_repl (fun () -> print_endline (pp_atomic_sig atomic_sig));
       [atomic_sig]
   | Bopen [ fname ] ->
       if List.mem fname !fnames then  []
       else
         let add_env = ref [] in
-        debug := false;
+        if !is_repl then parser := Parser.top;
         do_interp fname
           (open_file (String.uncapitalize_ascii fname ^ ".bc"))
           add_env;
+        if !is_repl then parser := Parser.repl;
         List.iter
           (function
             | (name, AtomSig_value ty) ->
@@ -84,23 +85,23 @@ let rec type_bind_expr env mod_expr =
          !add_env
       | _ -> []
 
-and type_mod_expr env mod_expr =
+and type_mod_expr env mod_expr  =
   match mod_expr.ast with
-  | Mvar name -> access_compound [ name ] (ComSig_struct !env)
+  | Mvar name -> (access_compound [ name ] (ComSig_struct !env))
   | Maccess (mod_expr, m) -> (
-      let l = type_mod_expr env mod_expr in
+      let l = type_mod_expr env mod_expr  in
       match find_mod m (get_struct l) with
       | Some m -> m
       | None -> failwith "type_mod_expr")
   | Mfunctor ((n, sig_expr), ret) ->
-      let arg = instantiate_compound (type_sig_expr !env sig_expr) in
+      let arg = instantiate_compound  (type_sig_expr !env sig_expr ) in
       extend_env env [ (n, AtomSig_module arg) ];
-      let ret = type_mod_expr env ret in
+      let ret =  (type_mod_expr env ret ) in
       restore_env env;
       (*print_endline (show_sema_sig (Sigfun (Sigmod (n, arg), ret)));*)
       ComSig_fun ( (n, AtomSig_module arg), ret)
   | Mapply (fct, args) ->
-      let fct_sig = type_mod_expr env fct in
+      let fct_sig = type_mod_expr env fct  in
       let compound_sig =
         List.fold_left
           (fun fct_sig arg_sig ->
@@ -110,13 +111,13 @@ and type_mod_expr env mod_expr =
                 instantiate_compound ret
             | _ -> failwith "type_mod_expr")
           fct_sig
-          (List.map (fun arg -> type_mod_expr env arg) args)
+          (List.map (fun arg -> type_mod_expr env arg ) args)
       in
       (*print_endline (show_sema_sig sema_sig);*)
       compound_sig
   | Mseal (mod_expr, sig_expr) ->
-      let sema_sig = type_mod_expr env mod_expr in
-      let seal_sig = type_sig_expr !env sig_expr in
+      let sema_sig = type_mod_expr env mod_expr  in
+      let seal_sig = type_sig_expr !env sig_expr  in
       compoundsigmatch !env sema_sig  seal_sig;
       seal_sig
   | Mstruct l ->
@@ -134,39 +135,41 @@ and interp env defs =
 
 and do_interp fname inchan env =
   file := fname;
-  (*try*)
-  if_debug (fun () ->
+  try
+  if_is_repl (fun () ->
       print_string "# ";
       flush stdout);
   let filebuf = Lexing.from_channel inchan in
   let ast = !parser Lexer.token filebuf in
   let e = interp env ast in
   env := e @ !env
-(*with
-  | InterpreterError msg -> print_endline ("InterpreterError " ^ msg)
+with
+  (*| InterpreterError msg -> print_endline ("InterpreterError " ^ msg)*)
   | Failure msg -> print_endline ("Failure " ^ msg)
   | Parser.Error -> print_endline "parser error"
   | Not_found -> print_endline "an unbound variable found"
-  | _ -> print_endline "something went wrong"*)
+  | _ -> print_endline "something went wrong"
 
 and open_file fname =
   try open_in fname
   with Sys_error _ -> failwith (Printf.sprintf "file not found %s" fname)
 
+
 let () =
   let argc = Array.length Sys.argv in
   if argc = 1 then (
+    parser := Parser.repl;
     let env = ref [] in
     print_endline "        BCaml a bear's interpreter of caml language";
     print_endline "";
     print_endline "";
     while true do
-      debug := true;
+      is_repl := true;
       do_interp "" stdin env
     done)
   else if argc = 2 then (
     let fname = Sys.argv.(1) in
-    debug := false;
+    is_repl := false;
     do_interp fname (open_file fname) (ref []))
   else (
     Format.printf "Usage: ./bcaml [filename]\n";
