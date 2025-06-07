@@ -65,8 +65,8 @@ let rec pp_ty = function
       ^ ") " ^ name
   | Tunknown -> "Tunknown"
   | Ttag -> "Ttag"
-  | Tpath (path, ty) -> String.concat "." path ^ "." ^ pp_ty ty 
-  | ty -> Printf.sprintf "%s" (show_ty ty)
+  | Tpath (name, path, _) -> String.concat "." path ^ "." ^ name
+  | Tabs (name, _, _) -> name
 (*| ty -> failwith (Printf.sprintf "pp_ty %s" (show_ty ty))*)
 
 let pp_decl decl =
@@ -175,13 +175,13 @@ let pp_decl decl =
       "type " ^ "(" ^ pp_x
       ^ List.fold_left (fun s x -> s ^ "," ^ pp_ty x) "" xl
       ^ ")" ^ " " ^ n ^ " = " ^ pp_ty ty
-  | TDabs (n, [], _) -> "type " ^ n 
-  | TDabs (n, x :: [], _) -> "type " ^ pp_ty x ^ " " ^ n 
+  | TDabs (n, [], _) -> "type " ^ n
+  | TDabs (n, x :: [], _) -> "type " ^ pp_ty x ^ " " ^ n
   | TDabs (n, x :: xl, _) ->
       let pp_x = pp_ty x in
       "type " ^ "(" ^ pp_x
       ^ List.fold_left (fun s x -> s ^ "," ^ pp_ty x) "" xl
-      ^ ")" ^ " " ^ n 
+      ^ ")" ^ " " ^ n
   | _ -> failwith "pp_tydecl"
 
 let pp_cst = function
@@ -227,18 +227,18 @@ let pp_val expr =
               "" xl
           ^ "}"
       | Epath (path, name) -> String.concat "." path ^ "." ^ name
-      | _ -> failwith "pp_exp"
+      | _ -> failwith (show_expr expr)
   in
   aux expr 0
 
 let rec pp_atomic_sig sema_sig =
   let ret =
     match sema_sig with
-    | (n, AtomSig_value ty) -> "val " ^ n ^ " : " ^ pp_ty ty
-    | (_, AtomSig_type decl) ->
-        pp_decl decl
-    | ("_", AtomSig_module compound_sig) ->  pp_compound_sig compound_sig
-    | (n, AtomSig_module compound_sig) -> "signature " ^ n ^ " = " ^ pp_compound_sig compound_sig
+    | n, AtomSig_value ty -> "val " ^ n ^ " : " ^ pp_ty ty
+    | _, AtomSig_type decl -> pp_decl decl
+    | "_", AtomSig_module compound_sig -> pp_compound_sig compound_sig
+    | n, AtomSig_module compound_sig ->
+        "signature " ^ n ^ " = " ^ pp_compound_sig compound_sig
   in
   reset_tvar_name ();
   ret
@@ -247,8 +247,9 @@ and pp_compound_sig sema_sig =
   let ret =
     match sema_sig with
     | ComSig_struct env -> "sig" ^ pp_env env ^ " end"
-    | ComSig_fun((n,arg),ret) ->
-        " functor (" ^ n  ^ ": " ^ pp_atomic_sig ("_", arg)
+    | ComSig_fun ((n, arg), ret) ->
+        " functor (" ^ n ^ ": "
+        ^ pp_atomic_sig ("_", arg)
         ^ " ) -> \n" ^ pp_compound_sig ret
   in
   reset_tvar_name ();

@@ -23,8 +23,8 @@ and ty =
   | Tconstr of string * ty list
   | Trecord of string * ty list * (string * ty) list
   | Tvariant of string * ty list * (string * ty) list
-  | Tpath of path * ty
-  | Tabs of ty * ty list
+  | Tpath of string * path * ty
+  | Tabs of string * ty * ty list
   | Ttag
 [@@deriving show]
 
@@ -204,7 +204,6 @@ and mod_expr' =
 
 and matches = (pat * expr) list [@@deriving show]
 and def_list = mod_expr list [@@deriving show]
-
 and bind_expr = bind_expr' ast [@@deriving show]
 
 and bind_expr' =
@@ -216,8 +215,6 @@ and bind_expr' =
   | Bsig of (string * sig_expr)
   | Bopen of path
 [@@deriving show]
-
-
 
 type atomic_sig =
   | AtomSig_value of ty

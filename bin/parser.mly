@@ -252,7 +252,7 @@ ty_def          : params tyname "=" "{" separated_nonempty_list(";", separated_p
                 | params tyname "=" nonempty_list("|" sum_case { $2 })
                                                     { ($2, make_decl(TDvariant($2,$1,$4)) ($startpos($1)) ($endpos($4))) }
                 | params tyname "=" ty              { ($2, make_decl(TDabbrev($2,$1,$4)) ($startpos($1)) ($endpos($4))) }
-                | params tyname                     { ($2, make_decl(TDabs($2,$1, Tabs (Tvar (ref (Unbound {id=Idstr $2; level= generic})), []))) ($startpos($1)) ($endpos($2))) }
+                | params tyname                     { ($2, make_decl(TDabs($2,$1, Tabs ($2, Tvar (ref (Unbound {id=Idstr $2; level= generic})), []))) ($startpos($1)) ($endpos($2))) }
 
 ty_def_         : params tyname "=" "{" separated_nonempty_list(";", separated_pair(field, ":", ty)) "}"
                                                     { ($2, make_decl(TDrecord($2,$1,$5)) ($startpos($1)) ($endpos($6))) }
@@ -273,9 +273,9 @@ simple_ty       : "(" ty "," separated_nonempty_list(",", ty) ")" tyname
                 | simple_ty tyname                  { Tconstr($2,$1::[]) }
                 | tyname                            { Tconstr($1,[]) }
                 | "(" ty "," separated_nonempty_list(",", ty) ")" path "." tyname
-                                                    { Tvar(ref (Linkto(Tpath($6, Tconstr($8,$2::$4))))) }
-                | simple_ty path "." tyname                  { Tvar(ref (Linkto (Tpath($2, Tconstr($4,$1::[]))))) }
-                | path "." tyname                            { Tvar(ref (Linkto(Tpath($1, Tconstr($3,[]))))) }
+                                                    { Tvar(ref (Linkto(Tpath($8, $6, Tconstr($8,$2::$4))))) }
+                | simple_ty path "." tyname                  { Tvar(ref (Linkto (Tpath($4, $2, Tconstr($4,$1::[]))))) }
+                | path "." tyname                            { Tvar(ref (Linkto(Tpath($3, $1, Tconstr($3,[]))))) }
                 | TUNIT                             { Tunit }
                 | TBOOL                             { Tbool }
                 | TINT                              { Tint }
