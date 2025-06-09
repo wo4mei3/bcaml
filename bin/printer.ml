@@ -67,6 +67,7 @@ let rec pp_ty = function
   | Ttag -> "Ttag"
   | Tpath (name, path, _) -> String.concat "." path ^ "." ^ name
   | Tabs (name, _, _) -> name
+(*^ show_ty ty*)
 (*| ty -> failwith (Printf.sprintf "pp_ty %s" (show_ty ty))*)
 
 let pp_decl decl =
@@ -238,7 +239,7 @@ let rec pp_atomic_sig sema_sig =
     | _, AtomSig_type decl -> pp_decl decl
     | "_", AtomSig_module compound_sig -> pp_compound_sig compound_sig
     | n, AtomSig_module compound_sig ->
-        "signature " ^ n ^ " = " ^ pp_compound_sig compound_sig
+        "module type " ^ n ^ " = " ^ pp_compound_sig compound_sig
   in
   reset_tvar_name ();
   ret

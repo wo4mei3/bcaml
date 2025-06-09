@@ -18,7 +18,7 @@
 %token <float> FLOAT
 %token TYPE ARROW "->" OF
 %token MATCH WITH FUNCTION
-%token LET REC AND IN VAL STRUCT SIG FUNCTOR MODULE SIGNATURE INCLUDE
+%token LET REC AND IN VAL STRUCT SIG FUNCTOR MODULE INCLUDE
 %token FUN BAR "|" BARBAR "||"
 %token IF THEN ELSE WHEN
 %token REF DEREF "!" ASSIGN ":="
@@ -74,13 +74,13 @@ def_            : TYPE separated_nonempty_list(AND, ty_def)
                 | MODULE UID "=" mod_expr           { make_def(Bmodule($2,$4)) ($startpos($1)) ($endpos($2)) }  
                 | MODULE UID COLON sig_expr "=" mod_expr 
                 { make_def(Bmodule($2,make_def(Mseal($6, $4)) ($startpos($4)) ($endpos($6)))) ($startpos($1)) ($endpos($6)) }  
-                | SIGNATURE UID "=" sig_expr        { make_def(Bsig($2,$4)) ($startpos($1)) ($endpos($2)) }  
+                | MODULE TYPE UID "=" sig_expr      { make_def(Bsig($3,$5)) ($startpos($1)) ($endpos($5)) }  
 
 sig_def         : VAL LID COLON ty                  { make_def(Dval($2,$4)) ($startpos($1)) ($endpos($4)) }
                 | TYPE separated_nonempty_list(AND, ty_def)
                                                     { make_def(Dtype $2)($startpos($1)) ($endpos($2)) }
                 | MODULE UID ":" sig_expr           { make_def(Dmodule($2,$4)) ($startpos($1)) ($endpos($4)) }  
-                | SIGNATURE UID "=" sig_expr        { make_def(Dsig($2,$4)) ($startpos($1)) ($endpos($4)) }  
+                | MODULE TYPE UID "=" sig_expr      { make_def(Dsig($3,$5)) ($startpos($1)) ($endpos($5)) }  
                 | INCLUDE path                      { make_def(Dinclude $2) ($startpos($1)) ($endpos($2)) }    
 
 sig_expr        : UID                               { make_def(Svar $1) ($startpos($1)) ($endpos($1))  }

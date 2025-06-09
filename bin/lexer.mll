@@ -103,7 +103,6 @@ rule token = parse
 | "_" { WILD }
 | "val"  { VAL }
 | "module" { MODULE }
-| "signature" { SIGNATURE }
 | "functor"  { FUNCTOR }
 | "struct"  { STRUCT }
 | "sig"  { SIG }

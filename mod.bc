@@ -1,37 +1,69 @@
-signature X = sig
+module type X = sig
   type t
 end
-
+(*
 module U:functor (Z:X) -> functor(Y:X) -> sig
   val f : Z.t -> Y.t
 end = functor(Z : X) -> functor(Y:X) -> struct
   let f x = x
-end
-(*
+end*)
+
 module Y:X = struct
   type t = bool
   let x = false 
 end
 
-signature Y = sig
+module type Y = sig
   type t = int
 end
-(*
-signature Z = sig
-  type 'a t
-  val x: 'a t
+
+module type Z = sig
+  type t
+  val f: t -> t
 end
 
 module W:Z = struct
+  type t = int
+  let f x = x
+end
+
+
+
+module type A = sig
+  type 'a t 
+  val x: 'a t
+end
+
+module B:A = struct
+  type 'a t = 'a list
+  let x = []
+end
+
+module type C = sig
+  type 'a t 
+  val x: 'a t
+end
+
+module D:C = struct
   type 'a t = 'a list
   let x = 1::[]
 end
-*)
+
+module type E = sig
+  type t 
+  val x: t
+end
+
+module F:E = struct
+  type t = int list
+  let x = 1::[]
+end
+
 module Y:Y = struct
   type t = int
 end
 
-signature S = sig
+module type S = sig
   type t
   val v : t
   val f : t -> t
@@ -40,6 +72,8 @@ end
 module F = functor (X : S) -> functor (Y : S) -> struct
   let w = Y.f X.v
 end
+
+module type T = S with type t = int
 (*
 module Bool = struct
   type t = bool
@@ -54,7 +88,7 @@ module Int = struct
 end
 
 module M : sig val w : int end = F Bool Int*)
-signature S = sig 
+module type S = sig 
   type t 
 end
 
@@ -71,4 +105,4 @@ functor(M1 :S)->
     struct 
       let f x= x
     end
-*)*)
+*)

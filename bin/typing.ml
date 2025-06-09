@@ -126,10 +126,12 @@ let type_of_decl' = function
       match instantiate generic (Trecord (n, tyl, [ ("temp", ty) ])) with
       | Trecord (_, tyl, [ ("temp", ty) ]) -> (tyl, ty)
       | _ -> failwith "type_of_decl")
-  | { ast = TDabs (_, tyl, ty); _ } -> (
-      match instantiate generic (Trecord ("_", tyl, [ ("temp", ty) ])) with
-      | Trecord (_, tyl, [ ("temp", ty) ]) -> (tyl, ty)
-      | _ -> failwith "type_of_decl")
+  | { ast = TDabs (_, tyl, ty); _ } ->
+      (*(
+        match instantiate generic (Trecord ("_", tyl, [ ("temp", ty) ])) with
+        | Trecord (_, tyl, [ ("temp", ty) ]) -> (tyl, ty)
+        | _ -> failwith "type_of_decl")*)
+      (tyl, ty)
 
 let rec type_of_decl env name =
   match env with
@@ -174,7 +176,8 @@ let rec adjustlevel level = function
   | _ -> ()
 
 let rec instantiate_atomic_sub id_var_hash = function
-  | n, AtomSig_value ty -> (n, AtomSig_value (instantiate' id_var_hash 1 ty))
+  | n, AtomSig_value ty ->
+      (n, AtomSig_value (instantiate' id_var_hash generic ty))
   | n, AtomSig_type decl ->
       let decl =
         match decl with
@@ -1273,6 +1276,12 @@ let check_recursive_def decl =
   in
   aux decl
 
+let unify' env ty ty' =
+  match ty with
+  | Tvar { contents = Linkto ty } -> unify env ty ty'
+  | Tabs (_, tvar, _) -> unify env tvar ty'
+  | _ -> unify env ty ty'
+
 let rec type_decl_expr env decl_expr =
   match decl_expr.ast with
   | Dval (name, ty) -> [ (name, AtomSig_value (expand_abbrev env ty)) ]
@@ -1286,7 +1295,12 @@ let rec type_decl_expr env decl_expr =
 and type_sig_expr env sig_expr =
   match sig_expr.ast with
   | Svar name ->
-      instantiate_compound (access_compound [ name ] (ComSig_struct env))
+      let s =
+        instantiate_compound (access_compound [ name ] (ComSig_struct env))
+      in
+      "a:" ^ name ^ (get_struct s |> show_tyenv) |> print_endline;
+      "b:" ^ show_tyenv env |> print_endline;
+      s
   | Sfunctor ((name, arg), ret) ->
       let arg = type_sig_expr env arg in
       let ret = type_sig_expr ((name, AtomSig_module arg) :: env) ret in
@@ -1294,9 +1308,8 @@ and type_sig_expr env sig_expr =
   | Sstruct l ->
       let l =
         List.fold_left
-          (fun add_env decl_expr ->
-            type_decl_expr (add_env @ env) decl_expr @ add_env)
-          [] l
+          (fun add_env decl_expr -> add_env @ type_decl_expr add_env decl_expr)
+          env l
       in
       ComSig_struct l
   | Swith (sig_expr, l) ->
@@ -1307,17 +1320,11 @@ and type_sig_expr env sig_expr =
             let tyl, ty = type_of_decl' decl
             and tyl', ty' = type_of_decl' decl' in
             unify_list env tyl tyl';
-            unify env ty ty'
+            unify' env (instantiate generic ty') ty
         | None -> failwith "type_sig_expr"
       in
       List.iter f l;
       sema_sig
-
-let unify' env ty ty' =
-  match ty with
-  | Tvar { contents = Linkto ty } -> unify env ty ty'
-  | Tabs (_, tvar, _) -> unify env tvar ty'
-  | _ -> unify env ty ty'
 
 let rec atomicsigmatch env sema_sig1 sema_sig2 =
   match sema_sig2 with
@@ -1332,7 +1339,7 @@ let rec atomicsigmatch env sema_sig1 sema_sig2 =
           let tyl, ty = type_of_decl' decl
           and tyl', ty' = type_of_decl' decl' in
           unify_list env tyl tyl';
-          unify' env ty ty'
+          unify' env (instantiate generic ty) ty'
       | None -> failwith "cannot find value");
       atomicsigmatch env sema_sig1 xs
   | (name, AtomSig_module compound_sig) :: xs ->
