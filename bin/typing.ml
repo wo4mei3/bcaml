@@ -218,8 +218,8 @@ and instantiate_compound_sub id_var_hash = function
         ( instantiate_atomic_sub id_var_hash (name, atomic_sig),
           instantiate_compound_sub id_var_hash compound_sig )
 
-let instantiate_atomic = instantiate_atomic_sub (Hashtbl.create 10)
-and instantiate_compound = instantiate_compound_sub (Hashtbl.create 10)
+let instantiate_atomic atomic_sig = instantiate_atomic_sub (Hashtbl.create 10) atomic_sig
+and instantiate_compound compound_sig = instantiate_compound_sub (Hashtbl.create 10) compound_sig
 
 let rec access_atomic path sema_sig =
   match (path, sema_sig) with
@@ -1295,12 +1295,7 @@ let rec type_decl_expr env decl_expr =
 and type_sig_expr env sig_expr =
   match sig_expr.ast with
   | Svar name ->
-      let s =
-        instantiate_compound (access_compound [ name ] (ComSig_struct env))
-      in
-      "a:" ^ name ^ (get_struct s |> show_tyenv) |> print_endline;
-      "b:" ^ show_tyenv env |> print_endline;
-      s
+      instantiate_compound (access_compound [ name ] (ComSig_struct env))
   | Sfunctor ((name, arg), ret) ->
       let arg = type_sig_expr env arg in
       let ret = type_sig_expr ((name, AtomSig_module arg) :: env) ret in
