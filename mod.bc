@@ -75,13 +75,13 @@ end
 
 module type T = S with type t = int
 (*
-module Bool = struct
+module Bool:T = struct
   type t = bool
   let v = false
   let f b = true
 end
 
-module Int = struct
+module Int:T = struct
   type t = int
   let v = 30
   let f x = x + 1

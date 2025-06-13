@@ -45,7 +45,7 @@ let rec type_bind_expr env mod_expr =
       check_valid_decl add_env;
       check_recursive_abbrev add_env;
       check_recursive_def add_env;
-      if_is_repl (fun () -> print_endline (pp_env add_env));
+      (*if_is_repl (fun () -> print_endline (pp_ add_env));*)
       (*extend_env env add_env;*)
       add_env
   | Bmodule (name, mod_expr) ->

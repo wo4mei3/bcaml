@@ -218,8 +218,11 @@ and instantiate_compound_sub id_var_hash = function
         ( instantiate_atomic_sub id_var_hash (name, atomic_sig),
           instantiate_compound_sub id_var_hash compound_sig )
 
-let instantiate_atomic atomic_sig = instantiate_atomic_sub (Hashtbl.create 10) atomic_sig
-and instantiate_compound compound_sig = instantiate_compound_sub (Hashtbl.create 10) compound_sig
+let instantiate_atomic atomic_sig =
+  instantiate_atomic_sub (Hashtbl.create 10) atomic_sig
+
+and instantiate_compound compound_sig =
+  instantiate_compound_sub (Hashtbl.create 10) compound_sig
 
 let rec access_atomic path sema_sig =
   match (path, sema_sig) with
@@ -1276,11 +1279,69 @@ let check_recursive_def decl =
   in
   aux decl
 
-let unify' env ty ty' =
-  match ty with
-  | Tvar { contents = Linkto ty } -> unify env ty ty'
-  | Tabs (_, tvar, _) -> unify env tvar ty'
-  | _ -> unify env ty ty'
+(* instantiate ty1 so that it is equal to ty2 *)
+let rec filter env ty1 ty2 =
+  match (ty1, ty2) with
+  | Tvar link1, Tvar link2 when link1 = link2 -> ()
+  | Tpath (_, path, Tconstr (name, [])), ty2
+  | ty2, Tpath (_, path, Tconstr (name, [])) -> (
+      let compound_sig = access_compound path (ComSig_struct env) in
+      let _, ty1 =
+        type_of_decl' (Option.get (find_type name (get_struct compound_sig)))
+      in
+      (*print_endline (show_ty ty1);*)
+      try filter env ty1 ty2
+      with _ ->
+        Printf.printf "Cannot unify types between %s and %s" (pp_ty ty1)
+          (pp_ty ty2);
+        failwith
+          (Printf.sprintf "Cannot unify types between %s and %s" (pp_ty ty1)
+             (pp_ty ty2)))
+  | Tabs (_, Tvar link1, []), Tabs (_, Tvar link2, []) when link1 = link2 -> ()
+  | Tabs (_, ty1, []), ty2 -> filter env ty1 ty2
+  | Tvar { contents = Linkto t1 }, t2 | t1, Tvar { contents = Linkto t2 } ->
+      filter env t1 t2
+  | Tvar ({ contents = Unbound { id; level } } as link), ty ->
+      if occursin id ty then
+        failwith
+          (Printf.sprintf "unify error due to ocurr check %s %s" (pp_ty ty1)
+             (pp_ty ty2));
+      adjustlevel level ty;
+      link := Linkto ty
+  | Tlist t1, Tlist t2 -> filter env t1 t2
+  | Tref t1, Tref t2 -> filter env t1 t2
+  | Tformat (arg1, ret1), Tformat (arg2, ret2) ->
+      filter env arg1 arg2;
+      filter env ret1 ret2
+  | Tarrow (arg1, ret1), Tarrow (arg2, ret2) ->
+      filter env arg1 arg2;
+      filter env ret1 ret2
+  | Ttuple tyl1, Ttuple tyl2 -> filter_list env tyl1 tyl2
+  | Tconstr (name1, tyl1), Tconstr (name2, tyl2) when name1 = name2 ->
+      filter_list env tyl1 tyl2
+  | Tconstr (name1, tyl1), Trecord (name2, tyl2, _) when name1 = name2 ->
+      filter_list env tyl1 tyl2
+  | Tconstr (name1, tyl1), Tvariant (name2, tyl2, _) when name1 = name2 ->
+      filter_list env tyl1 tyl2
+  | Trecord (name1, tyl1, _), Tconstr (name2, tyl2) when name1 = name2 ->
+      filter_list env tyl1 tyl2
+  | Tvariant (name1, tyl1, _), Tconstr (name2, tyl2) when name1 = name2 ->
+      filter_list env tyl1 tyl2
+  | Trecord (name1, _, fields1), Trecord (name2, _, fields2) when name1 = name2
+    ->
+      filter_list env (List.map snd fields1) (List.map snd fields2)
+  | Tvariant (name1, _, fields1), Tvariant (name2, _, fields2)
+    when name1 = name2 ->
+      filter_list env (List.map snd fields1) (List.map snd fields2)
+  | ty1, ty2 when ty1 = ty2 -> ()
+  | _ ->
+      Printf.printf "Cannot unify types between %s and %s" (show_ty ty1)
+        (show_ty ty2);
+      failwith
+        (Printf.sprintf "Cannot unify types between %s and %s" (pp_ty ty1)
+           (pp_ty ty2))
+
+and filter_list env tyl1 tyl2 = List.iter2 (filter env) tyl1 tyl2
 
 let rec type_decl_expr env decl_expr =
   match decl_expr.ast with
@@ -1303,8 +1364,9 @@ and type_sig_expr env sig_expr =
   | Sstruct l ->
       let l =
         List.fold_left
-          (fun add_env decl_expr -> add_env @ type_decl_expr add_env decl_expr)
-          env l
+          (fun add_env decl_expr ->
+            add_env @ type_decl_expr (add_env @ env) decl_expr)
+          [] l
       in
       ComSig_struct l
   | Swith (sig_expr, l) ->
@@ -1314,8 +1376,8 @@ and type_sig_expr env sig_expr =
         | Some decl' ->
             let tyl, ty = type_of_decl' decl
             and tyl', ty' = type_of_decl' decl' in
-            unify_list env tyl tyl';
-            unify' env (instantiate generic ty') ty
+            filter_list env tyl' tyl;
+            filter env ty' ty
         | None -> failwith "type_sig_expr"
       in
       List.iter f l;
@@ -1325,7 +1387,7 @@ let rec atomicsigmatch env sema_sig1 sema_sig2 =
   match sema_sig2 with
   | (name, AtomSig_value ty) :: xs ->
       (match find_val name sema_sig1 with
-      | Some ty' -> unify' env ty ty'
+      | Some ty' -> filter env ty ty'
       | None -> failwith "cannot find value");
       atomicsigmatch env sema_sig1 xs
   | (name, AtomSig_type decl) :: xs ->
@@ -1333,8 +1395,8 @@ let rec atomicsigmatch env sema_sig1 sema_sig2 =
       | Some decl' ->
           let tyl, ty = type_of_decl' decl
           and tyl', ty' = type_of_decl' decl' in
-          unify_list env tyl tyl';
-          unify' env (instantiate generic ty) ty'
+          filter_list env tyl tyl';
+          filter env (instantiate generic ty) ty'
       | None -> failwith "cannot find value");
       atomicsigmatch env sema_sig1 xs
   | (name, AtomSig_module compound_sig) :: xs ->
