@@ -1302,8 +1302,7 @@ let rec filter env ty1 ty2 =
           (Printf.sprintf "Cannot filter types between %s and %s" (pp_ty ty1)
              (pp_ty ty2)))
   | Tabs (_, Tvar link1, []), Tabs (_, Tvar link2, []) when link1 = link2 -> ()
-  | Tabs (_, ty1, []), ty2 ->
-      filter env ty1 ty2
+  | Tabs (_, ty1, []), ty2 -> filter env ty1 ty2
   | Tvar { contents = Linkto t1 }, t2 | t1, Tvar { contents = Linkto t2 } ->
       filter env t1 t2
   | Tvar ({ contents = Unbound { id; level } } as link), ty ->
@@ -1350,10 +1349,8 @@ and filter_list env tyl1 tyl2 = List.iter2 (filter env) tyl1 tyl2
 
 and type_match env ty1 ty2 =
   match (ty1, ty2) with
-  | ty1, Tabs (_,(Tvar {contents=Unbound _ } as ty),_) ->
-    filter env ty ty1
-  | ty1, Tabs (_,  ty,_) ->
-    filter env ty1 ty
+  | ty1, Tabs (_, (Tvar { contents = Unbound _ } as ty), _) -> filter env ty ty1
+  | ty1, Tabs (_, ty, _) -> filter env ty1 ty
   | Tvar { contents = Linkto t1 }, t2 | t1, Tvar { contents = Linkto t2 } ->
       type_match env t1 t2
   | Tlist t1, Tlist t2 -> type_match env t1 t2
@@ -1439,7 +1436,7 @@ let rec atomic_sig_match env sema_sig1 sema_sig2 =
           let tyl, ty = type_of_decl' decl
           and tyl', ty' = type_of_decl' decl' in
           type_match_list env tyl tyl';
-          type_match env ty ty'                                                                                                                                                                                                                                                                               
+          type_match env ty ty'
       | None -> failwith "cannot find type");
       atomic_sig_match env sema_sig1 xs
   | (name, AtomSig_module compound_sig') :: xs ->
