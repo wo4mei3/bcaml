@@ -107,7 +107,7 @@ and elaborate_mod_expr env mod_expr =
           (fun fct_sig arg_sig ->
             match fct_sig with
             | ComSig_fun ((_, AtomSig_module param_sig), ret) ->
-                compoundsigmatch env arg_sig param_sig;
+                compound_sig_match env arg_sig param_sig;
                 instantiate_compound ret
             | _ -> failwith "elaborate_mod_expr")
           fct_sig
@@ -118,7 +118,7 @@ and elaborate_mod_expr env mod_expr =
   | Mseal (mod_expr, sig_expr) ->
       let sema_sig, expr = elaborate_mod_expr env mod_expr in
       let seal_sig = type_sig_expr env sig_expr in
-      compoundsigmatch env sema_sig seal_sig;
+      compound_sig_match env sema_sig seal_sig;
       (seal_sig, expr)
   | Mstruct l ->
       let l, ctx =
