@@ -234,7 +234,7 @@ let rec access_atomic path sema_sig =
 and access_compound path sema_sig =
   match (path, sema_sig) with
   | s :: path, ComSig_struct l when List.mem_assoc s l ->
-      access_atomic path (s, List.assoc s l)
+      access_atomic (s :: path) (s, List.assoc s l)
   | [], sema_sig -> instantiate_compound sema_sig
   | _ -> failwith ("invalid path" ^ show_path path)
 
@@ -262,8 +262,10 @@ let rec unify env ty1 ty2 =
       failwith
         (Printf.sprintf "Cannot unify types between %s and %s" (pp_ty ty1)
            (pp_ty ty2))
-  | Tabs (_, (Tvar { contents = Linkto _ } as ty1), []), ty2 -> unify env ty1 ty2
-  | ty1, Tabs (_, (Tvar { contents = Linkto _ } as ty2), []) -> unify env ty1 ty2
+  | Tabs (_, (Tvar { contents = Linkto _ } as ty1), []), ty2 ->
+      unify env ty1 ty2
+  | ty1, Tabs (_, (Tvar { contents = Linkto _ } as ty2), []) ->
+      unify env ty1 ty2
   | Tvar { contents = Linkto t1 }, t2 | t1, Tvar { contents = Linkto t2 } ->
       unify env t1 t2
   | Tvar ({ contents = Unbound { id; level } } as link), ty
@@ -1300,9 +1302,18 @@ let rec filter env ty1 ty2 =
           (Printf.sprintf "Cannot filter types between %s and %s" (pp_ty ty1)
              (pp_ty ty2)))
   | Tabs (_, Tvar link1, []), Tabs (_, Tvar link2, []) when link1 = link2 -> ()
-  | Tabs (_, (Tvar { contents = Linkto _ } as ty1), []), ty2 -> filter env ty1 ty2
-  | ty1, Tabs (_, (Tvar { contents = Linkto _ } as ty2), []) -> filter env ty1 ty2
-    | Tabs (_, (Tvar { contents = Unbound _ } as ty1), []), ty2 -> filter env ty1 ty2
+  | Tabs (_, (Tvar { contents = Linkto _ } as ty1), []), ty2 ->
+      filter env ty1 ty2
+  | ty1, Tabs (_, (Tvar { contents = Linkto _ } as ty2), []) ->
+      filter env ty1 ty2
+  | ty, Tabs (_, Tvar ({ contents = Unbound { id; level } } as link), [])
+  | Tabs (_, Tvar ({ contents = Unbound { id; level } } as link), []), ty ->
+      if occursin id ty then
+        failwith
+          (Printf.sprintf "filter error due to ocurr check %s %s" (pp_ty ty1)
+             (pp_ty ty2));
+      adjustlevel level ty;
+      link := Linkto ty
   | Tvar { contents = Linkto t1 }, t2 | t1, Tvar { contents = Linkto t2 } ->
       filter env t1 t2
   | Tvar ({ contents = Unbound { id; level } } as link), ty ->
