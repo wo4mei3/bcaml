@@ -127,10 +127,10 @@ let type_of_decl' = function
       | Trecord (_, tyl, [ ("temp", ty) ]) -> (tyl, ty)
       | _ -> failwith "type_of_decl")
   | { ast = TDabs (_, tyl, ty); _ } ->
-      (*(
+      (*
         match instantiate generic (Trecord ("_", tyl, [ ("temp", ty) ])) with
         | Trecord (_, tyl, [ ("temp", ty) ]) -> (tyl, ty)
-        | _ -> failwith "type_of_decl")*)
+        | _ -> failwith "type_of_decl"*)
       (tyl, ty)
 
 let rec type_of_decl env name =
@@ -262,6 +262,8 @@ let rec unify env ty1 ty2 =
       failwith
         (Printf.sprintf "Cannot unify types between %s and %s" (pp_ty ty1)
            (pp_ty ty2))
+  | Tabs (_, (Tvar { contents = Linkto _ } as ty1), []), ty2 -> unify env ty1 ty2
+  | ty1, Tabs (_, (Tvar { contents = Linkto _ } as ty2), []) -> unify env ty1 ty2
   | Tvar { contents = Linkto t1 }, t2 | t1, Tvar { contents = Linkto t2 } ->
       unify env t1 t2
   | Tvar ({ contents = Unbound { id; level } } as link), ty
@@ -1292,19 +1294,21 @@ let rec filter env ty1 ty2 =
       (*print_endline (show_ty ty1);*)
       try filter env ty1 ty2
       with _ ->
-        Printf.printf "Cannot unify types between %s and %s" (pp_ty ty1)
+        Printf.printf "Cannot filter types between %s and %s" (pp_ty ty1)
           (pp_ty ty2);
         failwith
-          (Printf.sprintf "Cannot unify types between %s and %s" (pp_ty ty1)
+          (Printf.sprintf "Cannot filter types between %s and %s" (pp_ty ty1)
              (pp_ty ty2)))
   | Tabs (_, Tvar link1, []), Tabs (_, Tvar link2, []) when link1 = link2 -> ()
-  | Tabs (_, ty1, []), ty2 -> filter env ty1 ty2
+  | Tabs (_, (Tvar { contents = Linkto _ } as ty1), []), ty2 -> filter env ty1 ty2
+  | ty1, Tabs (_, (Tvar { contents = Linkto _ } as ty2), []) -> filter env ty1 ty2
+    | Tabs (_, (Tvar { contents = Unbound _ } as ty1), []), ty2 -> filter env ty1 ty2
   | Tvar { contents = Linkto t1 }, t2 | t1, Tvar { contents = Linkto t2 } ->
       filter env t1 t2
   | Tvar ({ contents = Unbound { id; level } } as link), ty ->
       if occursin id ty then
         failwith
-          (Printf.sprintf "unify error due to ocurr check %s %s" (pp_ty ty1)
+          (Printf.sprintf "filter error due to ocurr check %s %s" (pp_ty ty1)
              (pp_ty ty2));
       adjustlevel level ty;
       link := Linkto ty
@@ -1335,10 +1339,10 @@ let rec filter env ty1 ty2 =
       filter_list env (List.map snd fields1) (List.map snd fields2)
   | ty1, ty2 when ty1 = ty2 -> ()
   | _ ->
-      Printf.printf "Cannot unify types between %s and %s" (show_ty ty1)
+      Printf.printf "Cannot filter types between %s and %s" (show_ty ty1)
         (show_ty ty2);
       failwith
-        (Printf.sprintf "Cannot unify types between %s and %s" (pp_ty ty1)
+        (Printf.sprintf "Cannot filter types between %s and %s" (pp_ty ty1)
            (pp_ty ty2))
 
 and filter_list env tyl1 tyl2 = List.iter2 (filter env) tyl1 tyl2
@@ -1365,7 +1369,7 @@ and type_sig_expr env sig_expr =
       let l =
         List.fold_left
           (fun add_env decl_expr ->
-            add_env @ type_decl_expr (add_env @ env) decl_expr)
+            type_decl_expr (add_env @ env) decl_expr @ add_env)
           [] l
       in
       ComSig_struct l
@@ -1385,23 +1389,23 @@ and type_sig_expr env sig_expr =
 
 let rec atomicsigmatch env sema_sig1 sema_sig2 =
   match sema_sig2 with
-  | (name, AtomSig_value ty) :: xs ->
+  | (name, AtomSig_value ty') :: xs ->
       (match find_val name sema_sig1 with
-      | Some ty' -> filter env ty ty'
+      | Some ty -> filter env ty ty'
       | None -> failwith "cannot find value");
       atomicsigmatch env sema_sig1 xs
-  | (name, AtomSig_type decl) :: xs ->
+  | (name, AtomSig_type decl') :: xs ->
       (match find_type name sema_sig1 with
-      | Some decl' ->
+      | Some decl ->
           let tyl, ty = type_of_decl' decl
           and tyl', ty' = type_of_decl' decl' in
           filter_list env tyl tyl';
-          filter env (instantiate generic ty) ty'
-      | None -> failwith "cannot find value");
+          filter env ty ty'
+      | None -> failwith "cannot find type");
       atomicsigmatch env sema_sig1 xs
-  | (name, AtomSig_module compound_sig) :: xs ->
+  | (name, AtomSig_module compound_sig') :: xs ->
       (match find_mod name sema_sig1 with
-      | Some compound_sig' ->
+      | Some compound_sig ->
           compoundsigmatch env
             (instantiate_compound compound_sig)
             (instantiate_compound compound_sig')

@@ -1,5 +1,6 @@
 module type X = sig
   type t
+  val x:t
 end
 (*
 module U:functor (Z:X) -> functor(Y:X) -> sig
@@ -11,6 +12,10 @@ end*)
 module Y:X = struct
   type t = bool
   let x = false 
+end
+
+module A = struct 
+  let a = 1 
 end
 
 module type Y = sig
@@ -26,8 +31,6 @@ module W:Z = struct
   type t = int
   let f x = x
 end
-
-
 
 module type A = sig
   type 'a t 
@@ -69,22 +72,23 @@ module type S = sig
   val f : t -> t
 end
 
-module F = functor (X : S) -> functor (Y : S) -> struct
-  let w = Y.f X.v
+module type T = S with type t = int
+
+module Int:T = struct
+  type t = int
+  let v = 30
+  let f x = x + 1
 end
 
-module type T = S with type t = int
-(*
 module Bool:T = struct
   type t = bool
   let v = false
   let f b = true
 end
 
-module Int:T = struct
-  type t = int
-  let v = 30
-  let f x = x + 1
+(*
+module F = functor (X : S) -> functor (Y : S) -> struct
+  let w = Y.f X.v
 end
 
 module M : sig val w : int end = F Bool Int*)

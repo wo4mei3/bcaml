@@ -403,7 +403,7 @@ and eval1 expr =
   match !(expr.ast) with
   | Evar name -> lookupcontext name
   | Etuple l when not (List.exists (fun x -> isval x) l) ->
-      { ast = ref (Etuple (List.map eval1 l)); pos = expr.pos }
+      { ast = ref (Etuple (List.map (eval1) l)); pos = expr.pos }
   | Enil -> { ast = ref (Elist []); pos = expr.pos }
   | Econs (car, cdr) when not (isval car) ->
       { ast = ref (Econs (eval1 car, cdr)); pos = expr.pos }
@@ -524,6 +524,9 @@ and eval1 expr =
   | Erecord_access ({ ast = { contents = Erecord fields }; _ }, label) ->
       List.assoc label fields
   | EBlock1 expr -> expr
+  | Epath (s::l, name) -> 
+      let expr = List.fold_left (fun expr label -> { ast = ref (Erecord_access (expr, label)); pos = expr.pos }) (List.assoc s !ctx) l in
+      eval { ast = ref (Erecord_access (expr, name)); pos = expr.pos }
   | _ when isval expr -> expr
   | _ -> failwith (show_position expr.pos)
 
@@ -540,10 +543,8 @@ let eval_let pat_exprs =
   let ctx =
     List.fold_left
       (fun l (p, e) ->
-        l
-        @
         let ret = eval e in
-        do_match p ret)
+        do_match p ret @ l)
       [] pat_exprs
   in
   List.iter (fun (n, v) -> extendcontext n v) ctx;
@@ -553,10 +554,8 @@ let eval_letrec pat_exprs =
   let ctx =
     List.fold_left
       (fun l (p, e) ->
-        l
-        @
         let ret = eval e in
-        do_match p ret)
+        do_match p ret @ l)
       [] pat_exprs
   in
   List.iter (fun (n, v) -> extendcontext n v) ctx;

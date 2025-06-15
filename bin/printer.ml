@@ -247,7 +247,7 @@ let rec pp_atomic_sig sema_sig =
 and pp_compound_sig sema_sig =
   let ret =
     match sema_sig with
-    | ComSig_struct env -> "sig" ^ pp_env env ^ " end"
+    | ComSig_struct env -> "sig " ^ pp_env env ^ " end"
     | ComSig_fun ((n, arg), ret) ->
         " functor (" ^ n ^ ": "
         ^ pp_atomic_sig ("_", arg)
@@ -257,4 +257,4 @@ and pp_compound_sig sema_sig =
   ret
 
 and pp_env env =
-  List.fold_left (fun s sema_sig -> s ^ " " ^ pp_atomic_sig sema_sig) "" env
+  List.fold_left (fun s sema_sig -> pp_atomic_sig sema_sig ^ " " ^ s) "" env
