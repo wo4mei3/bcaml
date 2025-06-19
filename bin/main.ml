@@ -89,7 +89,6 @@ and elaborate_mod_expr env mod_expr =
       | None -> failwith "elaborate_mod_expr")
   | Mfunctor ((n, sig_expr), ret) ->
       let arg = type_sig_expr env sig_expr in
-      [ (n, AtomSig_module arg) ] |> show_tyenv |> print_endline;
       let ret, expr = elaborate_mod_expr ((n, AtomSig_module arg) :: env) ret in
       ( ComSig_fun ((n, AtomSig_module arg), ret),
         eval

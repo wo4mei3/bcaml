@@ -1302,7 +1302,6 @@ let rec filter env ty1 ty2 =
           (Printf.sprintf "Cannot filter types between %s and %s" (pp_ty ty1)
              (pp_ty ty2)))
   | Tabs (_, Tvar link1, []), Tabs (_, Tvar link2, []) when link1 = link2 -> ()
-  | Tabs (_, ty1, []), ty2 -> filter env ty1 ty2
   | Tvar { contents = Linkto t1 }, t2 | t1, Tvar { contents = Linkto t2 } ->
       filter env t1 t2
   | Tvar ({ contents = Unbound { id; level } } as link), ty ->
@@ -1349,8 +1348,7 @@ and filter_list env tyl1 tyl2 = List.iter2 (filter env) tyl1 tyl2
 
 and type_match env ty1 ty2 =
   match (ty1, ty2) with
-  | ty1, Tabs (_, (Tvar { contents = Unbound _ } as ty), _) -> filter env ty ty1
-  | ty1, Tabs (_, ty, _) -> filter env ty1 ty
+  | ty1, Tabs (_, ty, _) -> filter env ty ty1
   | Tvar { contents = Linkto t1 }, t2 | t1, Tvar { contents = Linkto t2 } ->
       type_match env t1 t2
   | Tlist t1, Tlist t2 -> type_match env t1 t2
@@ -1420,7 +1418,6 @@ and type_sig_expr env sig_expr =
         | None -> failwith "type_sig_expr"
       in
       List.iter f l;
-      show_compound_sig sema_sig |> print_endline;
       sema_sig
 
 let rec atomic_sig_match env sema_sig1 sema_sig2 =

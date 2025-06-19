@@ -26,6 +26,10 @@ end
 let x = B.C.a
 
 module type Y = sig
+  type t
+end
+
+module YY:Y = struct
   type t = int
 end
 
@@ -33,11 +37,11 @@ module type Z = sig
   type t
   val f: t -> t
 end
-(*
+
 module W:Z = struct
   type t = int
   let f x = x
-end*)
+end
 
 module type A = sig
   type 'a t 
@@ -53,12 +57,12 @@ module type C = sig
   type 'a t 
   val x: 'a t
 end
-(*
+
 module D:C = struct
   type 'a t = 'a list
   let x = 1::[]
 end
-*)
+
 module type E = sig
   type t 
   val x: t
@@ -88,18 +92,20 @@ module Int:T = struct
 end
 
 let x = Int.f Int.v
-(*
+
 module Bool:T = struct
   type t = bool
   let v = false
   let f b = true
-end*)
+end
 
 module type F = sig
-  val f:int -> int
+  type t
+  val f:t -> t
 end
 
 module G:F = struct
+  type t = int
   let f x = x
 end
 
