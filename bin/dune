@@ -6,4 +6,5 @@
 (executable
  (preprocess
   (pps ppx_import ppx_deriving.show))
+  (modes byte exe)
  (name main))

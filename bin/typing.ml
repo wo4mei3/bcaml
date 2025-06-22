@@ -28,7 +28,8 @@ let rec get_type_level ty =
   | Trecord (_, _, fields) | Tvariant (_, _, fields) ->
       get_type_level_list (List.map snd fields)
   | Ttag -> None
-  | _ -> failwith "get_type_level"
+  | Tabs _ -> None
+  | _ -> print_endline (show_ty ty); failwith "get_type_level"
 
 and get_type_level_list = function
   | [] -> None
@@ -106,7 +107,39 @@ let instantiate' id_var_hash level ty =
     | Tvariant (name, tyl, fields) ->
         Tvariant
           (name, List.map f tyl, List.map (fun (n, ty) -> (n, f ty)) fields)
-    | Tabs (name, ty, tyl) -> Tabs (name, f ty, List.map f tyl)
+    | Tabs (name, ty, tyl) -> Tabs (name, ty, List.map f tyl)
+    | _ -> ty
+  in
+  f ty
+
+let instantiate_abs id_var_hash level ty =
+  let rec f ty =
+    match ty with
+    | Tvar link -> (
+        match link with
+        | { contents = Unbound { id; level = level' } } when level' = generic
+          -> (
+            try Hashtbl.find id_var_hash id
+            with Not_found ->
+              let tvar = new_type_var level in
+              Hashtbl.add id_var_hash id tvar;
+              tvar)
+        | { contents = Linkto ty } -> Tvar (ref (Linkto (f ty)))
+        | _ -> ty)
+    | Tlist ty -> Tlist (f ty)
+    | Tref ty -> Tref (f ty)
+    | Tarrow (arg, ret) -> Tarrow (f arg, f ret)
+    | Ttuple tyl -> Ttuple (List.map f tyl)
+    | Tconstr (name, tyl) -> (
+        try Hashtbl.find id_var_hash (Idstr name)
+        with Not_found -> Tconstr (name, List.map f tyl))
+    | Trecord (name, tyl, fields) ->
+        Trecord
+          (name, List.map f tyl, List.map (fun (n, ty) -> (n, f ty)) fields)
+    | Tvariant (name, tyl, fields) ->
+        Tvariant
+          (name, List.map f tyl, List.map (fun (n, ty) -> (n, f ty)) fields)
+    | Tabs (name, ty, tyl) -> Tabs (name,f ty, List.map f tyl)
     | _ -> ty
   in
   f ty
@@ -177,34 +210,34 @@ let rec adjustlevel level = function
 
 let rec instantiate_atomic_sub id_var_hash = function
   | n, AtomSig_value ty ->
-      (n, AtomSig_value (instantiate' id_var_hash generic ty))
+      (n, AtomSig_value (instantiate_abs id_var_hash generic ty))
   | n, AtomSig_type decl ->
       let decl =
         match decl with
         | { ast = TDrecord (n, tyl, fields); pos } -> (
             match
-              instantiate' id_var_hash generic (Trecord (n, tyl, fields))
+              instantiate_abs id_var_hash generic (Trecord (n, tyl, fields))
             with
             | Trecord (n, tyl, fields) ->
                 { ast = TDrecord (n, tyl, fields); pos }
             | _ -> failwith "instantiate_sema_sig")
         | { ast = TDvariant (n, tyl, fields); pos } -> (
             match
-              instantiate' id_var_hash generic (Tvariant (n, tyl, fields))
+              instantiate_abs id_var_hash generic (Tvariant (n, tyl, fields))
             with
             | Tvariant (n, tyl, fields) ->
                 { ast = TDvariant (n, tyl, fields); pos }
             | _ -> failwith "instantiate_sema_sig")
         | { ast = TDabbrev (n, tyl, ty); pos } -> (
             match
-              instantiate' id_var_hash generic
+              instantiate_abs id_var_hash generic
                 (Trecord (n, tyl, [ ("temp", ty) ]))
             with
             | Trecord (n, tyl, [ ("temp", ty) ]) ->
                 { ast = TDabbrev (n, tyl, ty); pos }
             | _ -> failwith "instantiate_sema_sig")
         | { ast = TDabs (n, tyl, ty); pos } ->
-            { ast = TDabs (n, tyl, instantiate' id_var_hash generic ty); pos }
+            { ast = TDabs (n, tyl, instantiate_abs id_var_hash generic ty); pos }
       in
       (n, AtomSig_type decl)
   | n, AtomSig_module compound_sig ->
@@ -228,14 +261,14 @@ let rec access_atomic path sema_sig =
   match (path, sema_sig) with
   | s :: path, (n, AtomSig_module compound_sig) when s = n ->
       access_compound path compound_sig
-  | [], (_, AtomSig_module compound_sig) -> instantiate_compound compound_sig
+  | [], (_, AtomSig_module compound_sig) -> compound_sig
   | _ -> failwith ("invalid path" ^ show_path path)
 
 and access_compound path sema_sig =
   match (path, sema_sig) with
   | s :: path, ComSig_struct l when List.mem_assoc s l ->
       access_atomic (s :: path) (s, List.assoc s l)
-  | [], sema_sig -> instantiate_compound sema_sig
+  | [], sema_sig -> sema_sig
   | _ -> failwith ("invalid path" ^ show_path path)
 
 let rec unify env ty1 ty2 =
@@ -260,8 +293,8 @@ let rec unify env ty1 ty2 =
       Printf.printf "Cannot unify types between %s and %s" (pp_ty ty1)
         (pp_ty ty2);
       failwith
-        (Printf.sprintf "Cannot unify types between %s and %s" (pp_ty ty1)
-           (pp_ty ty2))
+        (Printf.sprintf "Cannot unify types between %s and %s" (show_ty ty1)
+           (show_ty ty2))
   | Tabs (_, (Tvar { contents = Linkto _ } as ty1), []), ty2 ->
       unify env ty1 ty2
   | ty1, Tabs (_, (Tvar { contents = Linkto _ } as ty2), []) ->
@@ -1440,8 +1473,8 @@ let rec atomic_sig_match env sema_sig1 sema_sig2 =
       (match find_mod name sema_sig1 with
       | Some compound_sig ->
           compound_sig_match env
-            (instantiate_compound compound_sig)
-            (instantiate_compound compound_sig')
+            ( compound_sig)
+            ( compound_sig')
       | None -> failwith "cannot find value");
       atomic_sig_match env sema_sig1 xs
   | [] -> ()

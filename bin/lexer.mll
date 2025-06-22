@@ -111,6 +111,7 @@ rule token = parse
 | "end" { END }
 | "else" { ELSE }
 | "function" { FUNCTION }
+| "match" { MATCH }
 | "when"  { WHEN }
 | "fun" { FUN }
 | "if" { IF }
