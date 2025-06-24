@@ -14,7 +14,7 @@ let rec elaborate_bind_expr env mod_expr =
       let ty = type_expr env 0 expr in
       if_is_repl (fun () ->
           print_endline ("- : " ^ pp_ty ty ^ " = " ^ pp_val (eval expr)));
-      ([ ("_", AtomSig_value ty) ], [ "_", eval expr ])
+      ([ ("_", AtomSig_value ty) ], [ ("_", eval expr) ])
   | Blet l ->
       let add_env = type_let env l in
       List.iter
@@ -37,9 +37,9 @@ let rec elaborate_bind_expr env mod_expr =
       (add_env, eval_letrec l)
   | Btype decl ->
       let add_env = List.map (fun (n, d) -> (n, AtomSig_type d)) decl in
-      check_valid_decl (add_env@env);
-      check_recursive_abbrev (add_env@env);
-      check_recursive_def (add_env@env);
+      check_valid_decl (add_env @ env);
+      check_recursive_abbrev (add_env @ env);
+      check_recursive_def (add_env @ env);
       (*if_is_repl (fun () -> print_endline (pp_ add_env));*)
       (add_env, [])
   | Bmodule (name, mod_expr) ->
@@ -107,14 +107,25 @@ and elaborate_mod_expr env mod_expr =
             match fct_sig with
             | ComSig_fun ((name, AtomSig_module param_sig), ret) ->
                 compound_sig_match env arg_sig param_sig;
-                (ret, ({ ast = ref (Pvar name); pos = mod_expr.pos }, arg_expr)::l)
+                ( ret,
+                  ({ ast = ref (Pvar name); pos = mod_expr.pos }, arg_expr) :: l
+                )
             | _ -> failwith "elaborate_mod_expr")
           (fct_sig, [])
-          (List.map (fun arg -> (elaborate_mod_expr env arg)) args)
+          (List.map (fun arg -> elaborate_mod_expr env arg) args)
       in
       let args = List.map (fun arg -> snd (elaborate_mod_expr env arg)) args in
       ctx := eval_let pat_exprs @ !ctx;
-      (compound_sig, eval { ast = ref(Elet(pat_exprs, { ast = ref (Eapply (fct, args)); pos = mod_expr.pos })); pos = mod_expr.pos})
+      ( compound_sig,
+        eval
+          {
+            ast =
+              ref
+                (Elet
+                   ( pat_exprs,
+                     { ast = ref (Eapply (fct, args)); pos = mod_expr.pos } ));
+            pos = mod_expr.pos;
+          } )
   | Mseal (mod_expr, sig_expr) ->
       let sema_sig, expr = elaborate_mod_expr env mod_expr in
       let seal_sig = type_sig_expr env sig_expr in

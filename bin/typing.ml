@@ -29,7 +29,9 @@ let rec get_type_level ty =
       get_type_level_list (List.map snd fields)
   | Ttag -> None
   | Tabs _ -> None
-  | _ -> print_endline (show_ty ty); failwith "get_type_level"
+  | _ ->
+      print_endline (show_ty ty);
+      failwith "get_type_level"
 
 and get_type_level_list = function
   | [] -> None
@@ -139,7 +141,7 @@ let instantiate_abs id_var_hash level ty =
     | Tvariant (name, tyl, fields) ->
         Tvariant
           (name, List.map f tyl, List.map (fun (n, ty) -> (n, f ty)) fields)
-    | Tabs (name, ty, tyl) -> Tabs (name,f ty, List.map f tyl)
+    | Tabs (name, ty, tyl) -> Tabs (name, f ty, List.map f tyl)
     | _ -> ty
   in
   f ty
@@ -237,7 +239,10 @@ let rec instantiate_atomic_sub id_var_hash = function
                 { ast = TDabbrev (n, tyl, ty); pos }
             | _ -> failwith "instantiate_sema_sig")
         | { ast = TDabs (n, tyl, ty); pos } ->
-            { ast = TDabs (n, tyl, instantiate_abs id_var_hash generic ty); pos }
+            {
+              ast = TDabs (n, tyl, instantiate_abs id_var_hash generic ty);
+              pos;
+            }
       in
       (n, AtomSig_type decl)
   | n, AtomSig_module compound_sig ->
@@ -1471,10 +1476,7 @@ let rec atomic_sig_match env sema_sig1 sema_sig2 =
       atomic_sig_match env sema_sig1 xs
   | (name, AtomSig_module compound_sig') :: xs ->
       (match find_mod name sema_sig1 with
-      | Some compound_sig ->
-          compound_sig_match env
-            ( compound_sig)
-            ( compound_sig')
+      | Some compound_sig -> compound_sig_match env compound_sig compound_sig'
       | None -> failwith "cannot find value");
       atomic_sig_match env sema_sig1 xs
   | [] -> ()
