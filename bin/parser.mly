@@ -252,7 +252,7 @@ ty_def          : params tyname "=" "{" separated_nonempty_list(";", separated_p
                 | params tyname "=" nonempty_list("|" sum_case { $2 })
                                                     { ($2, make_decl(TDvariant($2,$1,$4)) ($startpos($1)) ($endpos($4))) }
                 | params tyname "=" ty              { ($2, make_decl(TDabbrev($2,$1,$4)) ($startpos($1)) ($endpos($4))) }
-                | params tyname                     { ($2, make_decl(TDabs($2,$1, Tabs ($2, Tvar (ref (Unbound {id=Idstr $2; level= generic})), []))) ($startpos($1)) ($endpos($2))) }
+                | params tyname                     { ($2, make_decl(TDabs($2,$1,(* Tvar(ref(Linkto( *) Tabs ($2, Tvar (ref (Unbound {id=Idstr $2; level= generic})), []))) (*))))*) ($startpos($1)) ($endpos($2))) }
 
 ty_def_         : params tyname "=" "{" separated_nonempty_list(";", separated_pair(field, ":", ty)) "}"
                                                     { ($2, make_decl(TDrecord($2,$1,$5)) ($startpos($1)) ($endpos($6))) }

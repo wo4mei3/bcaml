@@ -253,8 +253,8 @@ let rec pp_atomic_sig sema_sig =
 and pp_compound_sig sema_sig =
   let ret =
     match sema_sig with
-    | ComSig_struct env -> "sig " ^ pp_env env ^ " end"
-    | ComSig_fun ((n, arg), ret) ->
+    | ComSig_struct (_, env) -> "sig " ^ pp_env env ^ " end"
+    | ComSig_fun (_, (n, arg), ret) ->
         " functor (" ^ n ^ ": "
         ^ pp_atomic_sig ("_", arg)
         ^ " ) -> \n" ^ pp_compound_sig ret

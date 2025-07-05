@@ -28,4 +28,5 @@ module AbstTypeInt : AbstTypeSig = struct
 end
 
 let t = AbstTypeInt.get_t 0
-let () = printf "%d" t
+(*let () = printf "%d" t*)
+let () = AbstTypeInt.print t

@@ -94,7 +94,7 @@ let instantiate' id_var_hash level ty =
               let tvar = new_type_var level in
               Hashtbl.add id_var_hash id tvar;
               tvar)
-        | { contents = Linkto ty } -> Tvar (ref (Linkto (f ty)))
+        | { contents = Linkto ty } -> (*Tvar (ref (Linkto (f ty))*) f ty
         | _ -> ty)
     | Tlist ty -> Tlist (f ty)
     | Tref ty -> Tref (f ty)
@@ -126,7 +126,7 @@ let instantiate_abs id_var_hash level ty =
               let tvar = new_type_var level in
               Hashtbl.add id_var_hash id tvar;
               tvar)
-        | { contents = Linkto ty } -> Tvar (ref (Linkto (f ty)))
+        | { contents = Linkto ty } -> (*Tvar (ref (Linkto (f ty)))*) f ty
         | _ -> ty)
     | Tlist ty -> Tlist (f ty)
     | Tref ty -> Tref (f ty)
@@ -167,6 +167,12 @@ let type_of_decl' = function
         | Trecord (_, tyl, [ ("temp", ty) ]) -> (tyl, ty)
         | _ -> failwith "type_of_decl"*)
       (tyl, ty)
+
+let rec get_abs_decl = function
+  | (_, AtomSig_type { ast = TDabs (_, _, ty); _ }) :: xs ->
+      ty :: get_abs_decl xs
+  | _ :: xs -> get_abs_decl xs
+  | [] -> []
 
 let rec type_of_decl env name =
   match env with
@@ -249,11 +255,12 @@ let rec instantiate_atomic_sub id_var_hash = function
       (n, AtomSig_module (instantiate_compound_sub id_var_hash compound_sig))
 
 and instantiate_compound_sub id_var_hash = function
-  | ComSig_struct l ->
-      ComSig_struct (List.map (instantiate_atomic_sub id_var_hash) l)
-  | ComSig_fun ((name, atomic_sig), compound_sig) ->
+  | ComSig_struct (tyl, l) ->
+      ComSig_struct (tyl, List.map (instantiate_atomic_sub id_var_hash) l)
+  | ComSig_fun (tyl, (name, atomic_sig), compound_sig) ->
       ComSig_fun
-        ( instantiate_atomic_sub id_var_hash (name, atomic_sig),
+        ( tyl,
+          instantiate_atomic_sub id_var_hash (name, atomic_sig),
           instantiate_compound_sub id_var_hash compound_sig )
 
 let instantiate_atomic atomic_sig =
@@ -271,7 +278,7 @@ let rec access_atomic path sema_sig =
 
 and access_compound path sema_sig =
   match (path, sema_sig) with
-  | s :: path, ComSig_struct l when List.mem_assoc s l ->
+  | s :: path, ComSig_struct (_, l) when List.mem_assoc s l ->
       access_atomic (s :: path) (s, List.assoc s l)
   | [], sema_sig -> sema_sig
   | _ -> failwith ("invalid path" ^ show_path path)
@@ -281,7 +288,7 @@ let rec unify env ty1 ty2 =
   | Tvar link1, Tvar link2 when link1 = link2 -> ()
   | Tpath (_, path, Tconstr (name, [])), ty2
   | ty2, Tpath (_, path, Tconstr (name, [])) -> (
-      let compound_sig = access_compound path (ComSig_struct env) in
+      let compound_sig = access_compound path (ComSig_struct ([], env)) in
       let _, ty1 =
         type_of_decl' (Option.get (find_type name (get_struct compound_sig)))
       in
@@ -300,10 +307,6 @@ let rec unify env ty1 ty2 =
       failwith
         (Printf.sprintf "Cannot unify types between %s and %s" (show_ty ty1)
            (show_ty ty2))
-  | Tabs (_, (Tvar { contents = Linkto _ } as ty1), []), ty2 ->
-      unify env ty1 ty2
-  | ty1, Tabs (_, (Tvar { contents = Linkto _ } as ty2), []) ->
-      unify env ty1 ty2
   | Tvar { contents = Linkto t1 }, t2 | t1, Tvar { contents = Linkto t2 } ->
       unify env t1 t2
   | Tvar ({ contents = Unbound { id; level } } as link), ty
@@ -1077,7 +1080,7 @@ and type_expr env level expr =
       ty
   | EBlock1 expr -> type_expr env level expr
   | Epath (path, name) -> (
-      let l = access_compound path (ComSig_struct env) in
+      let l = access_compound path (ComSig_struct ([], env)) in
       match find_val name (get_struct l) with
       | Some ty -> ty
       | None -> failwith ("invalid path" ^ name))
@@ -1324,10 +1327,10 @@ let check_recursive_def decl =
 (* instantiate ty1 so that it is equal to ty2 *)
 let rec filter env ty1 ty2 =
   match (ty1, ty2) with
-  | Tvar link1, Tvar link2 when link1 = link2 -> ()
+  | Tvar link1, Tvar link2 when link1 = link2 -> []
   | Tpath (_, path, Tconstr (name, [])), ty2
   | ty2, Tpath (_, path, Tconstr (name, [])) -> (
-      let compound_sig = access_compound path (ComSig_struct env) in
+      let compound_sig = access_compound path (ComSig_struct ([], env)) in
       let _, ty1 =
         type_of_decl' (Option.get (find_type name (get_struct compound_sig)))
       in
@@ -1339,7 +1342,11 @@ let rec filter env ty1 ty2 =
         failwith
           (Printf.sprintf "Cannot filter types between %s and %s" (pp_ty ty1)
              (pp_ty ty2)))
-  | Tabs (_, Tvar link1, []), Tabs (_, Tvar link2, []) when link1 = link2 -> ()
+  | Tabs (_, Tvar link1, []), Tabs (_, Tvar link2, []) when link1 = link2 -> []
+  (*| (Tabs (_, t1, _)) as ty, t2 ->
+      print_endline "ASDFGHJKJHGFDSWQ";
+      print_endline (show_ty ty);
+      (ty, t1) :: filter env t1 t2*)
   | Tvar { contents = Linkto t1 }, t2 | t1, Tvar { contents = Linkto t2 } ->
       filter env t1 t2
   | Tvar ({ contents = Unbound { id; level } } as link), ty ->
@@ -1348,15 +1355,15 @@ let rec filter env ty1 ty2 =
           (Printf.sprintf "filter error due to ocurr check %s %s" (pp_ty ty1)
              (pp_ty ty2));
       adjustlevel level ty;
-      link := Linkto ty
+      link := Linkto ty;
+      []
   | Tlist t1, Tlist t2 -> filter env t1 t2
   | Tref t1, Tref t2 -> filter env t1 t2
   | Tformat (arg1, ret1), Tformat (arg2, ret2) ->
-      filter env arg1 arg2;
-      filter env ret1 ret2
+      filter env arg1 arg2 @ filter env ret1 ret2
   | Tarrow (arg1, ret1), Tarrow (arg2, ret2) ->
-      filter env arg1 arg2;
-      filter env ret1 ret2
+      let l = filter env arg1 arg2 in
+      l @ filter env ret1 ret2
   | Ttuple tyl1, Ttuple tyl2 -> filter_list env tyl1 tyl2
   | Tconstr (name1, tyl1), Tconstr (name2, tyl2) when name1 = name2 ->
       filter_list env tyl1 tyl2
@@ -1374,7 +1381,7 @@ let rec filter env ty1 ty2 =
   | Tvariant (name1, _, fields1), Tvariant (name2, _, fields2)
     when name1 = name2 ->
       filter_list env (List.map snd fields1) (List.map snd fields2)
-  | ty1, ty2 when ty1 = ty2 -> ()
+  | ty1, ty2 when ty1 = ty2 -> []
   | _ ->
       Printf.printf "Cannot filter types between %s and %s" (show_ty ty1)
         (show_ty ty2);
@@ -1382,21 +1389,20 @@ let rec filter env ty1 ty2 =
         (Printf.sprintf "Cannot filter types between %s and %s" (pp_ty ty1)
            (pp_ty ty2))
 
-and filter_list env tyl1 tyl2 = List.iter2 (filter env) tyl1 tyl2
+and filter_list env tyl1 tyl2 = List.flatten (List.map2 (filter env) tyl1 tyl2)
 
 and type_match env ty1 ty2 =
   match (ty1, ty2) with
-  | ty1, Tabs (_, ty, _) -> filter env ty ty1
+  | ty1, (Tabs (_, t1, _) as ty) -> (ty, t1) :: filter env t1 ty1
   | Tvar { contents = Linkto t1 }, t2 | t1, Tvar { contents = Linkto t2 } ->
       type_match env t1 t2
   | Tlist t1, Tlist t2 -> type_match env t1 t2
   | Tref t1, Tref t2 -> type_match env t1 t2
   | Tformat (arg1, ret1), Tformat (arg2, ret2) ->
-      type_match env arg1 arg2;
-      type_match env ret1 ret2
+      type_match env arg1 arg2 @ type_match env ret1 ret2
   | Tarrow (arg1, ret1), Tarrow (arg2, ret2) ->
-      type_match env arg1 arg2;
-      type_match env ret1 ret2
+      let l = type_match env arg1 arg2 in
+      l @ type_match env ret1 ret2
   | Ttuple tyl1, Ttuple tyl2 -> type_match_list env tyl1 tyl2
   | Tconstr (name1, tyl1), Tconstr (name2, tyl2) when name1 = name2 ->
       type_match_list env tyl1 tyl2
@@ -1416,34 +1422,48 @@ and type_match env ty1 ty2 =
       type_match_list env (List.map snd fields1) (List.map snd fields2)
   | ty1, ty2 -> filter env ty1 ty2
 
-and type_match_list env tyl1 tyl2 = List.iter2 (type_match env) tyl1 tyl2
+and type_match_list env tyl1 tyl2 =
+  List.flatten (List.map2 (type_match env) tyl1 tyl2)
 
 let rec type_decl_expr env decl_expr =
   match decl_expr.ast with
-  | Dval (name, ty) -> [ (name, AtomSig_value (expand_abbrev env ty)) ]
-  | Dtype decl -> List.map (fun (n, d) -> (n, AtomSig_type d)) decl
+  | Dval (name, ty) -> ([], [ (name, AtomSig_value (expand_abbrev env ty)) ])
+  | Dtype decl ->
+      let decl = List.map (fun (n, d) -> (n, AtomSig_type d)) decl in
+      (get_abs_decl decl, decl)
   | Dmodule (name, sig_expr) ->
-      [ (name, AtomSig_module (type_sig_expr env sig_expr)) ]
+      ([], [ (name, AtomSig_module (type_sig_expr env sig_expr)) ])
   | Dsig (name, sig_expr) ->
-      [ (name, AtomSig_module (type_sig_expr env sig_expr)) ]
-  | Dinclude path -> get_struct (access_compound path (ComSig_struct env))
+      ([], [ (name, AtomSig_module (type_sig_expr env sig_expr)) ])
+  | Dinclude path ->
+      let compound_sig = access_compound path (ComSig_struct ([], env)) in
+      (get_abs compound_sig, get_struct compound_sig)
 
 and type_sig_expr env sig_expr =
   match sig_expr.ast with
-  | Svar name ->
-      instantiate_compound (access_compound [ name ] (ComSig_struct env))
+  | Svar name -> (
+      let compound_sig = access_compound [ name ] (ComSig_struct ([], env)) in
+      let id_var_hash = Hashtbl.create 10 in
+      let tyl = get_abs compound_sig in
+      let tyl = List.map (instantiate_abs id_var_hash generic) tyl in
+      let compound_sig = instantiate_compound_sub id_var_hash compound_sig in
+      match compound_sig with
+      | ComSig_struct (_, l) -> ComSig_struct (tyl, l)
+      | ComSig_fun (_, arg, ret) -> ComSig_fun (tyl, arg, ret))
   | Sfunctor ((name, arg), ret) ->
       let arg = type_sig_expr env arg in
       let ret = type_sig_expr ((name, AtomSig_module arg) :: env) ret in
-      ComSig_fun ((name, AtomSig_module arg), ret)
+      let tyl = get_abs ret in
+      ComSig_fun (tyl, (name, AtomSig_module arg), ret)
   | Sstruct l ->
-      let l =
+      let tyl, l =
         List.fold_left
-          (fun add_env decl_expr ->
-            type_decl_expr (add_env @ env) decl_expr @ add_env)
-          [] l
+          (fun (tyl, add_env) decl_expr ->
+            let new_tyl, new_env = type_decl_expr (add_env @ env) decl_expr in
+            (new_tyl @ tyl, new_env @ add_env))
+          ([], []) l
       in
-      ComSig_struct l
+      ComSig_struct (tyl, l)
   | Swith (sig_expr, l) ->
       let sema_sig = type_sig_expr env sig_expr in
       let f (n, decl) =
@@ -1451,8 +1471,7 @@ and type_sig_expr env sig_expr =
         | Some decl' ->
             let tyl, ty = type_of_decl' decl
             and tyl', ty' = type_of_decl' decl' in
-            type_match_list env tyl tyl';
-            type_match env ty ty'
+            ignore (type_match_list env tyl tyl' @ type_match env ty ty')
         | None -> failwith "type_sig_expr"
       in
       List.iter f l;
@@ -1461,30 +1480,91 @@ and type_sig_expr env sig_expr =
 let rec atomic_sig_match env sema_sig1 sema_sig2 =
   match sema_sig2 with
   | (name, AtomSig_value ty') :: xs ->
-      (match find_val name sema_sig1 with
-      | Some ty -> type_match env ty ty'
-      | None -> failwith "cannot find value");
-      atomic_sig_match env sema_sig1 xs
+      let tyl =
+        match find_val name sema_sig1 with
+        | Some ty -> type_match env ty ty'
+        | None -> failwith "cannot find value"
+      in
+      atomic_sig_match env sema_sig1 xs @ tyl
   | (name, AtomSig_type decl') :: xs ->
-      (match find_type name sema_sig1 with
-      | Some decl ->
-          let tyl, ty = type_of_decl' decl
-          and tyl', ty' = type_of_decl' decl' in
-          type_match_list env tyl tyl';
-          type_match env ty ty'
-      | None -> failwith "cannot find type");
-      atomic_sig_match env sema_sig1 xs
+      let tyl =
+        match find_type name sema_sig1 with
+        | Some decl ->
+            let tyl, ty = type_of_decl' decl
+            and tyl', ty' = type_of_decl' decl' in
+            type_match_list env tyl tyl' @ type_match env ty ty'
+        | None -> failwith "cannot find type"
+      in
+      atomic_sig_match env sema_sig1 xs @ tyl
   | (name, AtomSig_module compound_sig') :: xs ->
-      (match find_mod name sema_sig1 with
-      | Some compound_sig -> compound_sig_match env compound_sig compound_sig'
-      | None -> failwith "cannot find value");
-      atomic_sig_match env sema_sig1 xs
-  | [] -> ()
+      let tyl =
+        match find_mod name sema_sig1 with
+        | Some compound_sig -> compound_sig_match env compound_sig compound_sig'
+        | None -> failwith "cannot find value"
+      in
+      atomic_sig_match env sema_sig1 xs @ tyl
+  | [] -> []
 
 and compound_sig_match env sema_sig1 sema_sig2 =
   match (sema_sig1, sema_sig2) with
-  | ComSig_struct l1, ComSig_struct l2 -> atomic_sig_match env l1 l2
-  | ComSig_fun (arg1, ret1), ComSig_fun (arg2, ret2) ->
-      atomic_sig_match env [ arg2 ] [ arg1 ];
-      compound_sig_match (arg1 :: env) ret1 ret2
+  | ComSig_struct (_, l1), ComSig_struct (_, l2) -> atomic_sig_match env l1 l2
+  | ComSig_fun (_, arg1, ret1), ComSig_fun (_, arg2, ret2) ->
+      atomic_sig_match env [ arg2 ] [ arg1 ]
+      @ compound_sig_match (arg1 :: env) ret1 ret2
   | _ -> failwith "compound signature matching"
+
+let rec eliminate env subst ty =
+  match ty with
+  | Tpath (_, path, Tconstr (name, [])) ->
+      let compound_sig = access_compound path (ComSig_struct ([], env)) in
+      let _, ty =
+        type_of_decl' (Option.get (find_type name (get_struct compound_sig)))
+      in
+      (*print_endline (show_ty ty1);*)
+      eliminate env subst ty
+  | Tabs (_, t1, _) -> if List.mem_assoc ty subst then t1 else ty
+  | Tvar { contents = Linkto ty } -> eliminate env subst ty
+  | Tlist ty -> Tlist (eliminate env subst ty)
+  | Tref ty -> Tref (eliminate env subst ty)
+  | Tformat (arg, ret) ->
+      Tformat (eliminate env subst arg, eliminate env subst ret)
+  | Tarrow (arg, ret) ->
+      Tarrow (eliminate env subst arg, eliminate env subst ret)
+  | Ttuple tyl -> Ttuple (List.map (eliminate env subst) tyl)
+  | Tconstr (name, tyl) -> Tconstr (name, List.map (eliminate env subst) tyl)
+  | Trecord (name, tyl, fields) ->
+      Trecord
+        ( name,
+          List.map (eliminate env subst) tyl,
+          List.map (fun (name, ty) -> (name, eliminate env subst ty)) fields )
+  | Tvariant (name, tyl, fields) ->
+      Tvariant
+        ( name,
+          List.map (eliminate env subst) tyl,
+          List.map (fun (name, ty) -> (name, eliminate env subst ty)) fields )
+  | ty -> ty
+
+let rec remove_tabs_from_atomic env subst sema_sig =
+  match sema_sig with
+  | (name, AtomSig_value ty) :: xs ->
+      (name, AtomSig_value (eliminate env subst ty))
+      :: remove_tabs_from_atomic env subst xs
+  | (name, AtomSig_type decl) :: xs ->
+      let tyl, ty = type_of_decl' decl in
+      eliminate env subst ty |> ignore;
+      List.iter (fun ty -> eliminate env subst ty |> ignore) tyl |> ignore;
+      (name, AtomSig_type decl) :: remove_tabs_from_atomic env subst xs
+  | (name, AtomSig_module compound_sig) :: xs ->
+      (name, AtomSig_module (remove_tabs_from_compound env subst compound_sig))
+      :: remove_tabs_from_atomic env subst xs
+  | [] -> []
+
+and remove_tabs_from_compound env subst sema_sig =
+  match sema_sig with
+  | ComSig_struct (_, l) ->
+      ComSig_struct ([], remove_tabs_from_atomic env subst l)
+  | ComSig_fun (_, arg, ret) ->
+      ComSig_fun
+        ( [],
+          List.hd (remove_tabs_from_atomic env subst [ arg ]),
+          remove_tabs_from_compound (arg :: env) subst ret )
