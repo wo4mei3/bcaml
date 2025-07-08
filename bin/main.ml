@@ -79,7 +79,7 @@ let rec elaborate_bind_expr env mod_expr =
 and elaborate_mod_expr env mod_expr =
   match mod_expr.ast with
   | Mvar name ->
-      ( access_compound [ name ] (ComSig_struct ([], env)),
+      ( access_compound [ name ] (ComSig_struct env),
         eval { ast = ref (Evar name); pos = mod_expr.pos } )
   | Maccess (mod_expr, n) -> (
       let l, expr = elaborate_mod_expr env mod_expr in
@@ -89,9 +89,9 @@ and elaborate_mod_expr env mod_expr =
       | None -> failwith "elaborate_mod_expr")
   | Mfunctor ((n, sig_expr), ret) ->
       let arg = type_sig_expr env sig_expr in
-      let tyl = get_abs arg in
+
       let ret, expr = elaborate_mod_expr ((n, AtomSig_module arg) :: env) ret in
-      ( ComSig_fun (tyl, (n, AtomSig_module arg), ret),
+      ( ComSig_fun ((n, AtomSig_module arg), ret),
         eval
           {
             ast =
@@ -106,11 +106,9 @@ and elaborate_mod_expr env mod_expr =
         List.fold_left
           (fun (fct_sig, l) (arg_sig, arg_expr) ->
             match fct_sig with
-            | ComSig_fun (tyl, ((name, AtomSig_module param_sig) as param), ret)
-              ->
+            | ComSig_fun (((name, AtomSig_module param_sig) as param), ret) ->
                 let subst = compound_sig_match env arg_sig param_sig in
                 let ret = remove_tabs_from_compound (param :: env) subst ret in
-                print_endline (show_tyl tyl);
                 ( ret,
                   ({ ast = ref (Pvar name); pos = mod_expr.pos }, arg_expr) :: l
                 )
@@ -118,8 +116,6 @@ and elaborate_mod_expr env mod_expr =
           (fct_sig, [])
           (List.map (fun arg -> elaborate_mod_expr env arg) args)
       in
-      print_endline "aSDfg";
-      print_endline (show_compound_sig compound_sig);
       let args = List.map (fun arg -> snd (elaborate_mod_expr env arg)) args in
       ctx := eval_let pat_exprs @ !ctx;
       ( compound_sig,
@@ -147,7 +143,7 @@ and elaborate_mod_expr env mod_expr =
             (new_env @ add_env, new_ctx))
           [] l
       in
-      ( ComSig_struct ([], l),
+      ( ComSig_struct l,
         { ast = ref (Erecord (List.concat ctx)); pos = mod_expr.pos } )
 
 and interp env defs =

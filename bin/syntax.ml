@@ -224,8 +224,8 @@ type atomic_sig =
 [@@deriving show]
 
 and compound_sig =
-  | ComSig_struct of ty list * (string * atomic_sig) list
-  | ComSig_fun of ty list * (string * atomic_sig) * compound_sig
+  | ComSig_struct of (string * atomic_sig) list
+  | ComSig_fun of (string * atomic_sig) * compound_sig
 [@@deriving show]
 
 type tyenv = (string * atomic_sig) list [@@deriving show]
@@ -245,15 +245,11 @@ let rec find_mod n = function
   | _ :: xs -> find_mod n xs
   | [] -> None
 
-let get_struct = function
-  | ComSig_struct (_, l) -> l
-  | _ -> failwith "get_struct"
+let get_struct = function ComSig_struct l -> l | _ -> failwith "get_struct"
 
 let get_functor = function
-  | ComSig_fun (_, arg, ret) -> (arg, ret)
+  | ComSig_fun (arg, ret) -> (arg, ret)
   | _ -> failwith "get_struct"
-
-let get_abs = function ComSig_struct (l, _) | ComSig_fun (l, _, _) -> l
 
 let get_constant = function
   | Econstant cst -> cst
