@@ -56,7 +56,7 @@ To run Bcaml code with the built interpreter, provide a `.bc` source file as an 
 To run `examples/hello.bc` from the repository:
 
 ```sh
-$ cat hello.bc
+$ cat examples/hello.bc
 module Hello = struct
     let message = "Hello,"
     let hello () = printf "%s" message
@@ -122,7 +122,7 @@ Bcaml already provides rich features. To go beyond the learning purpose and impr
 ## 8. License
 
 This project is licensed under the GPLv2.0.  
-Please refer to the `LICENSE` file for more details.
+Please refer to the `LICENCE` file for more details.
 
 
 ## 9. Contact
