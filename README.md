@@ -2,8 +2,8 @@
 
 ## 1. Project Overview
 
-Bcaml is an interpreter for the Bcaml language implemented in OCaml.  
-This project was created primarily to deepen my understanding of functional programming.
+Bcaml is an educatinal OCaml-like functional programming language interpreter written in OCaml.
+This project was created primarily to deepen my understanding of functional programming and its module system.
 
 
 ## 2. Features
