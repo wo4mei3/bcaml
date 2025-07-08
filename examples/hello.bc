@@ -1,5 +1,5 @@
 module Hello = struct
-    let message = "Hello"
+    let message = "Hello,"
     let hello () = printf "%s" message
 end
 
@@ -24,7 +24,7 @@ end
 module AbstTypeInt : AbstTypeSig = struct
     type t = int
     let get_t i = i
-    let print t = printf "%d" t
+    let print t = printf " world! %d\n" t
 end
 
 let t = AbstTypeInt.get_t 0

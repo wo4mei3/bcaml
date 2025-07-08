@@ -12,29 +12,32 @@ let rec elaborate_bind_expr env mod_expr =
   match mod_expr.ast with
   | Bexpr expr ->
       let ty = type_expr env 0 expr in
+      let ret = eval expr in
       if_is_repl (fun () ->
-          print_endline ("- : " ^ pp_ty ty ^ " = " ^ pp_val (eval expr)));
-      ([ ("_", AtomSig_value ty) ], [ ("_", eval expr) ])
+          print_endline ("- : " ^ pp_ty ty ^ " = " ^ pp_val ret));
+      ([ ("_", AtomSig_value ty) ], [ ("_", ret) ])
   | Blet l ->
       let add_env = type_let env l in
+      let ret = eval_let l in
       List.iter
         (fun (name, expr) ->
           if_is_repl (fun () ->
               print_endline
                 ("val " ^ name ^ " = " ^ pp_val expr ^ " : "
                 ^ pp_ty (Option.get (find_val name add_env)))))
-        (eval_let l);
-      (add_env, eval_let l)
+        ret;
+      (add_env, ret)
   | Bletrec l ->
       let add_env = type_letrec env l in
+      let ret = eval_letrec l in
       List.iter
         (fun (name, expr) ->
           if_is_repl (fun () ->
               print_endline
                 ("val " ^ name ^ " = " ^ pp_val expr ^ " : "
                 ^ pp_ty (Option.get (find_val name add_env)))))
-        (eval_letrec l);
-      (add_env, eval_letrec l)
+        ret;
+      (add_env, ret)
   | Btype decl ->
       let add_env = List.map (fun (n, d) -> (n, AtomSig_type d)) decl in
       check_valid_decl (add_env @ env);

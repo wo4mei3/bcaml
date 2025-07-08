@@ -1,16 +1,16 @@
 (lang dune 3.7)
 (using menhir 2.1)
-(name block)
+(name bcaml)
 
 
 (source
- (github username/reponame))
+ (github wo4mei3/bcaml))
 
-(authors "Author Name")
+(authors "wo4mei3")
 
-(maintainers "Maintainer Name")
+(maintainers "wo4mei3")
 
-(license LICENSE)
+(license gplv2.0)
 
 (documentation https://url/to/documentation)
 

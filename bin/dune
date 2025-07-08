@@ -7,4 +7,6 @@
  (preprocess
   (pps ppx_import ppx_deriving.show))
  (modes byte exe)
- (name main))
+ (name main)
+ (ocamlc_flags
+  (:standard -g)))
