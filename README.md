@@ -1,14 +1,14 @@
-# Bcaml
+# BCaml
 
 ## 1. Project Overview
 
-Bcaml is an educatinal OCaml-like functional programming language interpreter written in OCaml.
+BCaml is an educatinal OCaml-like functional programming language interpreter written in OCaml.
 This project was created primarily to deepen my understanding of functional programming and its module system.
 
 
 ## 2. Features
 
-- Bcaml language interpreter  
+- BCaml language interpreter  
 - Robust implementation using OCaml  
 - Evaluation based on Abstract Syntax Trees (AST)  
 - Module system  
@@ -27,12 +27,12 @@ This project was created primarily to deepen my understanding of functional prog
 
 ### Prerequisites
 
-To build and run Bcaml, the following software is required:
+To build and run BCaml, the following software is required:
 
 - OCaml (recommended version: 4.14.0 or later)  
 - Dune (recommended version: 3.0 or later)
 
-### Building Bcaml
+### Building BCaml
 
 ```sh
 git clone https://github.com/Wo4mei3/bcaml.git
@@ -40,12 +40,12 @@ cd bcaml
 dune build
 ```
 
-The executable for the Bcaml interpreter will typically be located at `_build/default/bin/main.exe`.
+The executable for the BCaml interpreter will typically be located at `_build/default/bin/main.exe`.
 
 
-## 4. Running Bcaml Code
+## 4. Running BCaml Code
 
-To run Bcaml code with the built interpreter, provide a `.bc` source file as an argument.
+To run BCaml code with the built interpreter, provide a `.bc` source file as an argument.
 
 ```sh
 ./_build/default/bin/main.exe <your_source_file.bc>
@@ -97,13 +97,13 @@ Hello, world! 0
 
 ## 5. Examples
 
-The `examples/` directory contains several sample programs written in Bcaml.  
+The `examples/` directory contains several sample programs written in BCaml.  
 You can run these to verify the behavior of the interpreter.
 
 
-## 6. About the Bcaml Language
+## 6. About the BCaml Language
 
-The Bcaml language is based on the core computation features of ML-style languages.  
+The BCaml language is based on the core computation features of ML-style languages.  
 One of its most notable aspects is the implementation of advanced abstraction mechanisms such as modules, signatures, and functors at the language level, inspired by OCaml.
 
 Additionally, it supports expressive features such as algebraic data types, pattern matching, and mutable references, which are valuable for understanding structured code, code reuse, and large-scale design patterns.
@@ -111,11 +111,11 @@ Additionally, it supports expressive features such as algebraic data types, patt
 
 ## 7. Future Enhancements - Potential Areas for Growth
 
-Bcaml already provides rich features. To go beyond the learning purpose and improve usability and developer experience, the following areas can be enhanced:
+BCaml already provides rich features. To go beyond the learning purpose and improve usability and developer experience, the following areas can be enhanced:
 
-- I/O: Extending standard input/output and adding file I/O will allow Bcaml programs to interact with the external environment.  
+- I/O: Extending standard input/output and adding file I/O will allow BCaml programs to interact with the external environment.  
 - Error Handling: Implementing exception mechanisms (such as `try...with`) at the language level will enable more robust error management. Improving clarity and detail of error messages is also beneficial.  
-- Standard Library: Adding more built-in data structures (e.g., arrays, hash tables, sets) and comprehensive string manipulation functions will make Bcaml more versatile.  
+- Standard Library: Adding more built-in data structures (e.g., arrays, hash tables, sets) and comprehensive string manipulation functions will make BCaml more versatile.  
 - Developer Tools: Although REPL is available, tools such as debuggers, linters/formatters, and package managers can greatly improve the development workflow.
 
 
