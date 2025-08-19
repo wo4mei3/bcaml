@@ -48,6 +48,19 @@ let rec elaborate_bind_expr env mod_expr =
   | Bmodule (name, mod_expr) ->
       let compound_sig, expr = elaborate_mod_expr env mod_expr in
       let atomic_sig = (name, AtomSig_module compound_sig) in
+          (match compound_sig with
+          | ComSig_struct add_env ->    List.iter
+          (function
+            | name, AtomSig_value ty ->
+                if free_type_vars notgeneric ty != [] then
+                  failwith
+                    (Printf.sprintf
+                       "cannot generalize the type of this variable %s %s" name
+                       (show_ty ty))
+            | _, AtomSig_type _ -> ()
+            | _, AtomSig_module _ -> ())
+          add_env;
+          | _ -> ());
       if_is_repl (fun () -> print_endline (pp_atomic_sig atomic_sig));
       ( [ atomic_sig ],
         eval_let [ ({ ast = ref (Pvar name); pos = mod_expr.pos }, expr) ] )
@@ -64,18 +77,7 @@ let rec elaborate_bind_expr env mod_expr =
           (open_file (String.uncapitalize_ascii fname ^ ".bc"))
           add_env;
         if !is_repl then parser := Parser.repl;
-        List.iter
-          (function
-            | name, AtomSig_value ty ->
-                if free_type_vars notgeneric ty != [] then
-                  failwith
-                    (Printf.sprintf
-                       "cannot generalize the type of this variable %s %s" name
-                       (show_ty ty))
-            | _, AtomSig_type _ -> ()
-            | _, AtomSig_module _ -> ())
-          !add_env;
-        (*fnames := fname :: !fnames;*)
+        (* fnames := fname :: !fnames; *)
         (!add_env, [])
   | _ -> ([], [])
 
