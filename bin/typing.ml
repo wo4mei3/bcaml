@@ -1418,56 +1418,6 @@ and type_match env ty1 ty2 =
 and type_match_list env tyl1 tyl2 =
   List.flatten (List.map2 (type_match env) tyl1 tyl2)
 
-let rec type_decl_expr env decl_expr =
-  match decl_expr.ast with
-  | Dval (name, ty) -> [ (name, AtomSig_value (expand_abbrev env ty)) ]
-  | Dtype decl ->
-      let decl = List.map (fun (n, d) -> (n, AtomSig_type d)) decl in
-      decl
-  | Dmodule (name, sig_expr) ->
-      [ (name, AtomSig_module (type_sig_expr env sig_expr)) ]
-  | Dsig (name, sig_expr) ->
-      [ (name, AtomSig_module (type_sig_expr env sig_expr)) ]
-  | Dinclude path ->
-      let compound_sig = access_compound path (ComSig_struct env) in
-      get_struct compound_sig
-
-and type_sig_expr env sig_expr =
-  match sig_expr.ast with
-  | Svar name -> (
-      let compound_sig = access_compound [ name ] (ComSig_struct env) in
-      let id_var_hash = Hashtbl.create 10 in
-      let compound_sig = instantiate_compound_sub id_var_hash compound_sig in
-      match compound_sig with
-      | ComSig_struct l -> ComSig_struct l
-      | ComSig_fun (arg, ret) -> ComSig_fun (arg, ret))
-  | Sfunctor ((name, arg), ret) ->
-      let arg = type_sig_expr env arg in
-      let ret = type_sig_expr ((name, AtomSig_module arg) :: env) ret in
-
-      ComSig_fun ((name, AtomSig_module arg), ret)
-  | Sstruct l ->
-      let l =
-        List.fold_left
-          (fun add_env decl_expr ->
-            let new_env = type_decl_expr (add_env @ env) decl_expr in
-            new_env @ add_env)
-          [] l
-      in
-      ComSig_struct l
-  | Swith (sig_expr, l) ->
-      let sema_sig = type_sig_expr env sig_expr in
-      let f (n, decl) =
-        match find_type n (get_struct sema_sig) with
-        | Some decl' ->
-            let tyl, ty = type_of_decl' decl
-            and tyl', ty' = type_of_decl' decl' in
-            ignore (type_match_list env tyl tyl' @ type_match env ty ty')
-        | None -> failwith "type_sig_expr"
-      in
-      List.iter f l;
-      sema_sig
-
 let rec atomic_sig_match env sema_sig1 sema_sig2 =
   match sema_sig2 with
   | (name, AtomSig_value ty') :: xs ->
