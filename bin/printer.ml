@@ -22,9 +22,10 @@ let name_of_tvar tvar =
     varname
 
 let rec pp_ty = function
-  | Tvar { contents = Unbound { id; level } } when level = generic ->
+  | Tvar { contents = Unbound { id; level ; _} } when level = generic ->
       "'" ^ name_of_tvar id
-  | Tvar { contents = Unbound { id; level = _ } } -> "'" ^ "_" ^ name_of_tvar id
+  | Tvar { contents = Unbound { id; level = _ ; 
+  _} } -> "'" ^ "_" ^ name_of_tvar id
   | Tvar { contents = Linkto ty } -> pp_ty ty
   | Tunit -> "unit"
   | Tbool -> "bool"

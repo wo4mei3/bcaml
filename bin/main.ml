@@ -149,8 +149,9 @@ and elaborate_mod_expr env mod_expr =
           (fun (fct_sig, l) (arg_sig, arg_expr) ->
             match fct_sig with
             | ComSig_fun (((name, AtomSig_module param_sig) as param), ret) ->
-                let subst = compound_sig_match env arg_sig param_sig in
-                let ret = remove_tabs_from_compound (param :: env) subst ret in
+                (*let subst = compound_sig_match env arg_sig param_sig in
+                let ret = remove_tabs_from_compound (param :: env) subst ret in*)
+                (compound_sig_match env arg_sig param_sig, param) |> ignore;
                 ( ret,
                   ({ ast = ref (Pvar name); pos = mod_expr.pos }, arg_expr) :: l
                 )

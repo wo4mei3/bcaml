@@ -2,7 +2,7 @@ let generic = -1
 let notgeneric = 0
 
 type id_kind = Idint of int | Idstr of string [@@deriving show]
-type tyvar = { id : id_kind; level : int } [@@deriving show]
+type tyvar = { id : id_kind; level : int; abstract:bool } [@@deriving show]
 
 type link = Unbound of tyvar | Linkto of ty [@@deriving show]
 

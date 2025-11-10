@@ -8,7 +8,7 @@ let gen_id () =
   incr curr_id;
   ret
 
-let new_type_var level = Tvar (ref (Unbound { id = Idint (gen_id ()); level }))
+let new_type_var level = Tvar (ref (Unbound { id = Idint (gen_id ()); level; abstract=false}))
 
 let min_opt lhs rhs =
   match (lhs, rhs) with
@@ -19,7 +19,8 @@ let min_opt lhs rhs =
 
 let rec get_type_level ty =
   match ty with
-  | Tvar { contents = Unbound { id = _; level } } -> Some level
+  | Tvar { contents = Unbound { id = _; level; 
+  _ } } -> Some level
   | Tvar { contents = Linkto ty } -> get_type_level ty
   | Tunit | Tbool | Tint | Tfloat | Tchar | Tstring -> None
   | Tlist ty | Tref ty -> get_type_level ty
@@ -65,8 +66,8 @@ let rec generalize level ty =
   match ty with
   | Tvar link -> (
       match link with
-      | { contents = Unbound { id; level = level' } } when level' > level ->
-          link := Unbound { id; level = generic }
+      | { contents = Unbound { id; level = level' ; abstract} } when level' > level ->
+          link := Unbound { id; level = generic ; abstract}
       | { contents = Linkto ty } -> generalize level ty
       | _ -> ())
   | Tlist ty -> generalize level ty
@@ -87,7 +88,7 @@ let instantiate' id_var_hash level ty =
     match ty with
     | Tvar link -> (
         match link with
-        | { contents = Unbound { id; level = level' } } when level' = generic
+        | { contents = Unbound { id; level = level' ;abstract=false} } when level' = generic
           -> (
             try Hashtbl.find id_var_hash id
             with Not_found ->
@@ -119,7 +120,7 @@ let instantiate_abs id_var_hash level ty =
     match ty with
     | Tvar link -> (
         match link with
-        | { contents = Unbound { id; level = level' } } when level' = generic
+        | { contents = Unbound { id; level = level';abstract=false } } when level' = generic
           -> (
             try Hashtbl.find id_var_hash id
             with Not_found ->
@@ -141,7 +142,7 @@ let instantiate_abs id_var_hash level ty =
     | Tvariant (name, tyl, fields) ->
         Tvariant
           (name, List.map f tyl, List.map (fun (n, ty) -> (n, f ty)) fields)
-    | Tabs (name, ty, tyl) -> Tabs (name, f ty, List.map f tyl)
+    | Tabs (name, ty, tyl) -> Tabs (name,ty, List.map f tyl)
     | _ -> ty
   in
   f ty
@@ -184,7 +185,7 @@ let rec is_unbound_tvar = function
 let rec occursin id = function
   | Tvar link -> (
       match link with
-      | { contents = Unbound { id = id'; level = _ } } -> id = id'
+      | { contents = Unbound { id = id'; level = _; _ } } -> id = id'
       | { contents = Linkto ty } -> occursin id ty)
   | Tlist ty -> occursin id ty
   | Tref ty -> occursin id ty
@@ -197,8 +198,8 @@ let rec occursin id = function
 let rec adjustlevel level = function
   | Tvar link -> (
       match link with
-      | { contents = Unbound { id = id'; level = level' } } ->
-          if level < level' then link := Unbound { id = id'; level }
+      | { contents = Unbound { id = id'; level = level' ; abstract} } ->
+          if level < level' then link := Unbound { id = id'; level;abstract }
       | { contents = Linkto ty } -> adjustlevel level ty)
   | Tlist ty -> adjustlevel level ty
   | Tref ty -> adjustlevel level ty
@@ -302,8 +303,8 @@ let rec unify env ty1 ty2 =
            (show_ty ty2))
   | Tvar { contents = Linkto t1 }, t2 | t1, Tvar { contents = Linkto t2 } ->
       unify env t1 t2
-  | Tvar ({ contents = Unbound { id; level } } as link), ty
-  | ty, Tvar ({ contents = Unbound { id; level } } as link) ->
+  | Tvar ({ contents = Unbound { id; level;abstract=false; } } as link), ty
+  | ty, Tvar ({ contents = Unbound { id; level;abstract=false; } } as link) ->
       if occursin id ty then
         failwith
           (Printf.sprintf "unify error due to ocurr check %s %s" (pp_ty ty1)
@@ -1149,7 +1150,7 @@ let type_letrec env pat_expr =
   add_env
 
 let rec check_valid_ty tyl = function
-  | Tvar { contents = Unbound { id; level = _ } } ->
+  | Tvar { contents = Unbound { id; level = _;_; } } ->
       List.exists (occursin id) tyl
   | Tvar { contents = Linkto t } -> check_valid_ty tyl t
   | Tlist t -> check_valid_ty tyl t
@@ -1342,7 +1343,8 @@ let rec filter env ty1 ty2 =
       (ty, t1) :: filter env t1 t2*)
   | Tvar { contents = Linkto t1 }, t2 | t1, Tvar { contents = Linkto t2 } ->
       filter env t1 t2
-  | Tvar ({ contents = Unbound { id; level } } as link), ty ->
+  | Tvar ({ contents = Unbound { id; level;abstract=false; } } as link), ty 
+    | ty ,Tvar ({ contents = Unbound { id; level;abstract=false; } } as link) ->
       if occursin id ty then
         failwith
           (Printf.sprintf "filter error due to ocurr check %s %s" (pp_ty ty1)
@@ -1386,7 +1388,14 @@ and filter_list env tyl1 tyl2 = List.flatten (List.map2 (filter env) tyl1 tyl2)
 
 and type_match env ty1 ty2 =
   match (ty1, ty2) with
-  | ty1, (Tabs (_, t1, _) as ty) -> (ty, t1) :: filter env t1 ty1
+  | ty, (Tvar ({ contents = Unbound { id; level;abstract=true; } } as link)) ->
+        if occursin id ty then
+        failwith
+          (Printf.sprintf "filter error due to ocurr check %s %s" (pp_ty ty1)
+             (pp_ty ty2));
+      adjustlevel level ty;
+      link := Linkto ty;
+      [] 
   | Tvar { contents = Linkto t1 }, t2 | t1, Tvar { contents = Linkto t2 } ->
       type_match env t1 t2
   | Tlist t1, Tlist t2 -> type_match env t1 t2
