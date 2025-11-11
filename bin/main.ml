@@ -52,7 +52,7 @@ and elaborate_sig_expr env sig_expr =
         | Some decl' ->
             let tyl, ty = type_of_decl' decl
             and tyl', ty' = type_of_decl' decl' in
-            ignore (type_match_list env tyl tyl' @ type_match env ty ty')
+            (type_match_list env tyl tyl' ;type_match env ty ty')
         | None -> failwith "elaborate_sig_expr"
       in
       List.iter f l;

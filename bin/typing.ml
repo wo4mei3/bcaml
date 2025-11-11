@@ -29,7 +29,6 @@ let rec get_type_level ty =
   | Trecord (_, _, fields) | Tvariant (_, _, fields) ->
       get_type_level_list (List.map snd fields)
   | Ttag -> None
-  | Tabs _ -> None
   | _ ->
       print_endline (show_ty ty);
       failwith "get_type_level"
@@ -83,39 +82,8 @@ let rec generalize level ty =
       List.iter (fun (_, ty) -> generalize level ty) fields
   | _ -> ()
 
-let instantiate' id_var_hash level ty =
-  let rec f ty =
-    match ty with
-    | Tvar link -> (
-        match link with
-        | { contents = Unbound { id; level = level' ;abstract=false} } when level' = generic
-          -> (
-            try Hashtbl.find id_var_hash id
-            with Not_found ->
-              let tvar = new_type_var level in
-              Hashtbl.add id_var_hash id tvar;
-              tvar)
-        | { contents = Linkto ty } -> (*Tvar (ref (Linkto (f ty))*) f ty
-        | _ -> ty)
-    | Tlist ty -> Tlist (f ty)
-    | Tref ty -> Tref (f ty)
-    | Tarrow (arg, ret) -> Tarrow (f arg, f ret)
-    | Ttuple tyl -> Ttuple (List.map f tyl)
-    | Tconstr (name, tyl) -> (
-        try Hashtbl.find id_var_hash (Idstr name)
-        with Not_found -> Tconstr (name, List.map f tyl))
-    | Trecord (name, tyl, fields) ->
-        Trecord
-          (name, List.map f tyl, List.map (fun (n, ty) -> (n, f ty)) fields)
-    | Tvariant (name, tyl, fields) ->
-        Tvariant
-          (name, List.map f tyl, List.map (fun (n, ty) -> (n, f ty)) fields)
-    | Tabs (name, ty, tyl) -> Tabs (name, ty, List.map f tyl)
-    | _ -> ty
-  in
-  f ty
 
-let instantiate_abs id_var_hash level ty =
+let instantiate_sub id_var_hash level ty =
   let rec f ty =
     match ty with
     | Tvar link -> (
@@ -142,12 +110,11 @@ let instantiate_abs id_var_hash level ty =
     | Tvariant (name, tyl, fields) ->
         Tvariant
           (name, List.map f tyl, List.map (fun (n, ty) -> (n, f ty)) fields)
-    | Tabs (name, ty, tyl) -> Tabs (name,ty, List.map f tyl)
     | _ -> ty
   in
   f ty
 
-let instantiate level ty = instantiate' (Hashtbl.create 10) level ty
+let instantiate level ty = instantiate_sub (Hashtbl.create 10) level ty
 
 let type_of_decl' = function
   | { ast = TDrecord (n, tyl, fields); _ } -> (
@@ -213,27 +180,27 @@ let rec adjustlevel level = function
 
 let rec instantiate_atomic_sub id_var_hash = function
   | n, AtomSig_value ty ->
-      (n, AtomSig_value (instantiate_abs id_var_hash generic ty))
+      (n, AtomSig_value (instantiate_sub id_var_hash generic ty))
   | n, AtomSig_type decl ->
       let decl =
         match decl with
         | { ast = TDrecord (n, tyl, fields); pos } -> (
             match
-              instantiate_abs id_var_hash generic (Trecord (n, tyl, fields))
+              instantiate_sub id_var_hash generic (Trecord (n, tyl, fields))
             with
             | Trecord (n, tyl, fields) ->
                 { ast = TDrecord (n, tyl, fields); pos }
             | _ -> failwith "instantiate_sema_sig")
         | { ast = TDvariant (n, tyl, fields); pos } -> (
             match
-              instantiate_abs id_var_hash generic (Tvariant (n, tyl, fields))
+              instantiate_sub id_var_hash generic (Tvariant (n, tyl, fields))
             with
             | Tvariant (n, tyl, fields) ->
                 { ast = TDvariant (n, tyl, fields); pos }
             | _ -> failwith "instantiate_sema_sig")
         | { ast = TDabbrev (n, tyl, ty); pos } -> (
             match
-              instantiate_abs id_var_hash generic
+              instantiate_sub id_var_hash generic
                 (Trecord (n, tyl, [ ("temp", ty) ]))
             with
             | Trecord (n, tyl, [ ("temp", ty) ]) ->
@@ -241,7 +208,7 @@ let rec instantiate_atomic_sub id_var_hash = function
             | _ -> failwith "instantiate_sema_sig")
         | { ast = TDabs (n, tyl, ty); pos } ->
             {
-              ast = TDabs (n, tyl, instantiate_abs id_var_hash generic ty);
+              ast = TDabs (n, tyl, instantiate_sub id_var_hash generic ty);
               pos;
             }
       in
@@ -294,13 +261,6 @@ let rec unify env ty1 ty2 =
         failwith
           (Printf.sprintf "Cannot unify types between %s and %s" (pp_ty ty1)
              (pp_ty ty2)))
-  | Tabs (_, Tvar link1, []), Tabs (_, Tvar link2, []) when link1 = link2 -> ()
-  | Tabs (_, Tvar _, []), Tabs (_, Tvar _, []) ->
-      Printf.printf "Cannot unify types between %s and %s" (pp_ty ty1)
-        (pp_ty ty2);
-      failwith
-        (Printf.sprintf "Cannot unify types between %s and %s" (show_ty ty1)
-           (show_ty ty2))
   | Tvar { contents = Linkto t1 }, t2 | t1, Tvar { contents = Linkto t2 } ->
       unify env t1 t2
   | Tvar ({ contents = Unbound { id; level;abstract=false; } } as link), ty
@@ -1321,7 +1281,7 @@ let check_recursive_def decl =
 (* instantiate ty1 so that it is equal to ty2 *)
 let rec filter env ty1 ty2 =
   match (ty1, ty2) with
-  | Tvar link1, Tvar link2 when link1 = link2 -> []
+  | Tvar link1, Tvar link2 when link1 = link2 -> ()
   | Tpath (_, path, Tconstr (name, [])), ty2
   | ty2, Tpath (_, path, Tconstr (name, [])) -> (
       let compound_sig = access_compound path (ComSig_struct env) in
@@ -1336,11 +1296,6 @@ let rec filter env ty1 ty2 =
         failwith
           (Printf.sprintf "Cannot filter types between %s and %s" (pp_ty ty1)
              (pp_ty ty2)))
-  | Tabs (_, Tvar link1, []), Tabs (_, Tvar link2, []) when link1 = link2 -> []
-  (*| (Tabs (_, t1, _)) as ty, t2 ->
-      print_endline "ASDFGHJKJHGFDSWQ";
-      print_endline (show_ty ty);
-      (ty, t1) :: filter env t1 t2*)
   | Tvar { contents = Linkto t1 }, t2 | t1, Tvar { contents = Linkto t2 } ->
       filter env t1 t2
   | Tvar ({ contents = Unbound { id; level;abstract=false; } } as link), ty 
@@ -1351,14 +1306,15 @@ let rec filter env ty1 ty2 =
              (pp_ty ty2));
       adjustlevel level ty;
       link := Linkto ty;
-      []
+      ()
   | Tlist t1, Tlist t2 -> filter env t1 t2
   | Tref t1, Tref t2 -> filter env t1 t2
   | Tformat (arg1, ret1), Tformat (arg2, ret2) ->
-      filter env arg1 arg2 @ filter env ret1 ret2
+      filter env arg1 arg2;
+      filter env ret1 ret2
   | Tarrow (arg1, ret1), Tarrow (arg2, ret2) ->
-      let l = filter env arg1 arg2 in
-      l @ filter env ret1 ret2
+      filter env arg1 arg2;
+      filter env ret1 ret2
   | Ttuple tyl1, Ttuple tyl2 -> filter_list env tyl1 tyl2
   | Tconstr (name1, tyl1), Tconstr (name2, tyl2) when name1 = name2 ->
       filter_list env tyl1 tyl2
@@ -1376,7 +1332,7 @@ let rec filter env ty1 ty2 =
   | Tvariant (name1, _, fields1), Tvariant (name2, _, fields2)
     when name1 = name2 ->
       filter_list env (List.map snd fields1) (List.map snd fields2)
-  | ty1, ty2 when ty1 = ty2 -> []
+  | ty1, ty2 when ty1 = ty2 -> ()
   | _ ->
       Printf.printf "Cannot filter types between %s and %s" (show_ty ty1)
         (show_ty ty2);
@@ -1384,7 +1340,7 @@ let rec filter env ty1 ty2 =
         (Printf.sprintf "Cannot filter types between %s and %s" (pp_ty ty1)
            (pp_ty ty2))
 
-and filter_list env tyl1 tyl2 = List.flatten (List.map2 (filter env) tyl1 tyl2)
+and filter_list env tyl1 tyl2 = List.iter2 (filter env) tyl1 tyl2
 
 and type_match env ty1 ty2 =
   match (ty1, ty2) with
@@ -1395,16 +1351,17 @@ and type_match env ty1 ty2 =
              (pp_ty ty2));
       adjustlevel level ty;
       link := Linkto ty;
-      [] 
+      ()
   | Tvar { contents = Linkto t1 }, t2 | t1, Tvar { contents = Linkto t2 } ->
       type_match env t1 t2
   | Tlist t1, Tlist t2 -> type_match env t1 t2
   | Tref t1, Tref t2 -> type_match env t1 t2
   | Tformat (arg1, ret1), Tformat (arg2, ret2) ->
-      type_match env arg1 arg2 @ type_match env ret1 ret2
+      type_match env arg1 arg2;
+      type_match env ret1 ret2
   | Tarrow (arg1, ret1), Tarrow (arg2, ret2) ->
-      let l = type_match env arg1 arg2 in
-      l @ type_match env ret1 ret2
+      type_match env arg1 arg2;
+      type_match env ret1 ret2
   | Ttuple tyl1, Ttuple tyl2 -> type_match_list env tyl1 tyl2
   | Tconstr (name1, tyl1), Tconstr (name2, tyl2) when name1 = name2 ->
       type_match_list env tyl1 tyl2
@@ -1425,94 +1382,37 @@ and type_match env ty1 ty2 =
   | ty1, ty2 -> filter env ty1 ty2
 
 and type_match_list env tyl1 tyl2 =
-  List.flatten (List.map2 (type_match env) tyl1 tyl2)
+  List.iter2 (type_match env) tyl1 tyl2
 
 let rec atomic_sig_match env sema_sig1 sema_sig2 =
   match sema_sig2 with
   | (name, AtomSig_value ty') :: xs ->
-      let tyl =
-        match find_val name sema_sig1 with
+  atomic_sig_match env sema_sig1 xs;
+        (match find_val name sema_sig1 with
         | Some ty -> type_match env ty ty'
-        | None -> failwith "cannot find value"
-      in
-      atomic_sig_match env sema_sig1 xs @ tyl
+        | None -> failwith "cannot find value")
   | (name, AtomSig_type decl') :: xs ->
-      let tyl =
-        match find_type name sema_sig1 with
+  atomic_sig_match env sema_sig1 xs;
+        (match find_type name sema_sig1 with
         | Some decl ->
             let tyl, ty = type_of_decl' decl
             and tyl', ty' = type_of_decl' decl' in
-            type_match_list env tyl tyl' @ type_match env ty ty'
-        | None -> failwith "cannot find type"
-      in
-      atomic_sig_match env sema_sig1 xs @ tyl
+            type_match_list env tyl tyl';
+            type_match env ty ty'
+        | None -> failwith "cannot find type")
+      
   | (name, AtomSig_module compound_sig') :: xs ->
-      let tyl =
-        match find_mod name sema_sig1 with
+      atomic_sig_match env sema_sig1 xs;
+        (match find_mod name sema_sig1 with
         | Some compound_sig -> compound_sig_match env compound_sig compound_sig'
-        | None -> failwith "cannot find value"
-      in
-      atomic_sig_match env sema_sig1 xs @ tyl
-  | [] -> []
+        | None -> failwith "cannot find value")
+      
+  | [] -> ()
 
 and compound_sig_match env sema_sig1 sema_sig2 =
   match (sema_sig1, sema_sig2) with
   | ComSig_struct l1, ComSig_struct l2 -> atomic_sig_match env l1 l2
   | ComSig_fun (arg1, ret1), ComSig_fun (arg2, ret2) ->
-      atomic_sig_match env [ arg2 ] [ arg1 ]
-      @ compound_sig_match (arg1 :: env) ret1 ret2
+      atomic_sig_match env [ arg2 ] [ arg1 ];
+      compound_sig_match (arg1 :: env) ret1 ret2
   | _ -> failwith "compound signature matching"
-
-let rec eliminate env subst ty =
-  match ty with
-  | Tpath (_, path, Tconstr (name, [])) ->
-      let compound_sig = access_compound path (ComSig_struct env) in
-      let _, ty =
-        type_of_decl' (Option.get (find_type name (get_struct compound_sig)))
-      in
-      (*print_endline (show_ty ty1);*)
-      eliminate env subst ty
-  | Tabs (_, t1, _) -> if List.mem_assoc ty subst then t1 else ty
-  | Tvar { contents = Linkto ty } -> eliminate env subst ty
-  | Tlist ty -> Tlist (eliminate env subst ty)
-  | Tref ty -> Tref (eliminate env subst ty)
-  | Tformat (arg, ret) ->
-      Tformat (eliminate env subst arg, eliminate env subst ret)
-  | Tarrow (arg, ret) ->
-      Tarrow (eliminate env subst arg, eliminate env subst ret)
-  | Ttuple tyl -> Ttuple (List.map (eliminate env subst) tyl)
-  | Tconstr (name, tyl) -> Tconstr (name, List.map (eliminate env subst) tyl)
-  | Trecord (name, tyl, fields) ->
-      Trecord
-        ( name,
-          List.map (eliminate env subst) tyl,
-          List.map (fun (name, ty) -> (name, eliminate env subst ty)) fields )
-  | Tvariant (name, tyl, fields) ->
-      Tvariant
-        ( name,
-          List.map (eliminate env subst) tyl,
-          List.map (fun (name, ty) -> (name, eliminate env subst ty)) fields )
-  | ty -> ty
-
-let rec remove_tabs_from_atomic env subst sema_sig =
-  match sema_sig with
-  | (name, AtomSig_value ty) :: xs ->
-      (name, AtomSig_value (eliminate env subst ty))
-      :: remove_tabs_from_atomic env subst xs
-  | (name, AtomSig_type decl) :: xs ->
-      let tyl, ty = type_of_decl' decl in
-      eliminate env subst ty |> ignore;
-      List.iter (fun ty -> eliminate env subst ty |> ignore) tyl |> ignore;
-      (name, AtomSig_type decl) :: remove_tabs_from_atomic env subst xs
-  | (name, AtomSig_module compound_sig) :: xs ->
-      (name, AtomSig_module (remove_tabs_from_compound env subst compound_sig))
-      :: remove_tabs_from_atomic env subst xs
-  | [] -> []
-
-and remove_tabs_from_compound env subst sema_sig =
-  match sema_sig with
-  | ComSig_struct l -> ComSig_struct (remove_tabs_from_atomic env subst l)
-  | ComSig_fun (arg, ret) ->
-      ComSig_fun
-        ( List.hd (remove_tabs_from_atomic env subst [ arg ]),
-          remove_tabs_from_compound (arg :: env) subst ret )

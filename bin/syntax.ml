@@ -24,7 +24,6 @@ and ty =
   | Trecord of string * ty list * (string * ty) list
   | Tvariant of string * ty list * (string * ty) list
   | Tpath of string * path * ty
-  | Tabs of string * ty * ty list
   | Ttag
 [@@deriving show]
 

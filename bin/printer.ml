@@ -67,13 +67,13 @@ let rec pp_ty = function
   | Tunknown -> "Tunknown"
   | Ttag -> "Ttag"
   | Tpath (name, path, _) -> String.concat "." path ^ "." ^ name
-  | Tabs (name, _, []) -> name
+(*  | Tabs (name, _, []) -> name
   | Tabs (name, _, x :: []) -> pp_ty x ^ " " ^ name
   | Tabs (name, _, x :: xl) ->
       let pp_x = pp_ty x in
       "(" ^ pp_x
       ^ List.fold_left (fun s x -> s ^ "," ^ pp_ty x) "" xl
-      ^ ") " ^ name
+      ^ ") " ^ name*)
 (*^ show_ty ty*)
 (*| ty -> failwith (Printf.sprintf "pp_ty %s" (show_ty ty))*)
 
