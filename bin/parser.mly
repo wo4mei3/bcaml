@@ -240,7 +240,7 @@ ident           : lid                               { $1 }
                 | ASR                               { Pasr }
 
 
-param           : "'" lid                           { Tvar (ref (Unbound {id=Idstr $2; level= generic;abstract=false})) }
+param           : "'" lid                           { Tvar (ref ({link=Unbound {id=Idstr $2; level= generic};abstract=false})) }
 
 params          :                                   { [] }
                 | param                             { $1::[] }
@@ -253,7 +253,7 @@ ty_def          : params tyname "=" "{" separated_nonempty_list(";", separated_p
                                                     { ($2, make_decl(TDvariant($2,$1,$4)) ($startpos($1)) ($endpos($4))) }
                 | params tyname "=" ty              { ($2, make_decl(TDabbrev($2,$1,$4)) ($startpos($1)) ($endpos($4))) }
                 | params tyname                     { ($2, make_decl(TDabs($2,$1
-                ,Tvar (ref (Unbound {id=Idstr $2; level= generic; abstract=true})))) ($startpos($1)) ($endpos($2))) }
+                ,Tvar (ref ({link=Unbound {id=Idstr $2; level= generic;}; abstract=true})))) ($startpos($1)) ($endpos($2))) }
 
 ty_def_         : params tyname "=" "{" separated_nonempty_list(";", separated_pair(field, ":", ty)) "}"
                                                     { ($2, make_decl(TDrecord($2,$1,$5)) ($startpos($1)) ($endpos($6))) }
@@ -274,9 +274,9 @@ simple_ty       : "(" ty "," separated_nonempty_list(",", ty) ")" tyname
                 | simple_ty tyname                  { Tconstr($2,$1::[]) }
                 | tyname                            { Tconstr($1,[]) }
                 | "(" ty "," separated_nonempty_list(",", ty) ")" path "." tyname
-                                                    { Tvar(ref (Linkto(Tpath($8, $6, Tconstr($8,$2::$4))))) }
-                | simple_ty path "." tyname                  { Tvar(ref (Linkto (Tpath($4, $2, Tconstr($4,$1::[]))))) }
-                | path "." tyname                            { Tvar(ref (Linkto(Tpath($3, $1, Tconstr($3,[]))))) }
+                                                    { Tvar(ref ({link=Linkto(Tpath($8, $6, Tconstr($8,$2::$4)));abstract=false})) }
+                | simple_ty path "." tyname                  { Tvar(ref ({link=Linkto (Tpath($4, $2, Tconstr($4,$1::[])));abstract=false})) }
+                | path "." tyname                            { Tvar(ref ({link=Linkto(Tpath($3, $1, Tconstr($3,[])));abstract=false})) }
                 | TUNIT                             { Tunit }
                 | TBOOL                             { Tbool }
                 | TINT                              { Tint }

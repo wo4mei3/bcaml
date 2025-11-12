@@ -52,7 +52,8 @@ and elaborate_sig_expr env sig_expr =
         | Some decl' ->
             let tyl, ty = type_of_decl' decl
             and tyl', ty' = type_of_decl' decl' in
-            (type_match_list env tyl tyl' ;type_match env ty ty')
+            type_match_list env tyl tyl';
+            type_match env ty ty'
         | None -> failwith "elaborate_sig_expr"
       in
       List.iter f l;
@@ -102,7 +103,9 @@ let rec elaborate_bind_expr env mod_expr =
       ( [ atomic_sig ],
         eval_let [ ({ ast = ref (Pvar name); pos = mod_expr.pos }, expr) ] )
   | Bsig (name, sig_expr) ->
-      let atomic_sig = (name, AtomSig_module (elaborate_sig_expr env sig_expr)) in
+      let atomic_sig =
+        (name, AtomSig_module (elaborate_sig_expr env sig_expr))
+      in
       if_is_repl (fun () -> print_endline (pp_atomic_sig atomic_sig));
       ([ atomic_sig ], [])
   | Bopen [ fname ] ->
@@ -150,7 +153,7 @@ and elaborate_mod_expr env mod_expr =
             match fct_sig with
             | ComSig_fun (((name, AtomSig_module param_sig) as param), ret) ->
                 (*let subst = compound_sig_match env arg_sig param_sig in
-                let ret = remove_tabs_from_compound (param :: env) subst ret in*)
+                  let ret = remove_tabs_from_compound (param :: env) subst ret in*)
                 (compound_sig_match env arg_sig param_sig, param) |> ignore;
                 ( ret,
                   ({ ast = ref (Pvar name); pos = mod_expr.pos }, arg_expr) :: l
@@ -187,16 +190,16 @@ and elaborate_mod_expr env mod_expr =
           [] l
       in
       List.iter
-          (function
-            | name, AtomSig_value ty ->
-                if free_type_vars notgeneric ty != [] then
-                  failwith
-                    (Printf.sprintf
-                       "cannot generalize the type of this variable %s %s" name
-                       (show_ty ty))
-            | _, AtomSig_type _ -> ()
-            | _, AtomSig_module _ -> ())
-          l;
+        (function
+          | name, AtomSig_value ty ->
+              if free_type_vars notgeneric ty != [] then
+                failwith
+                  (Printf.sprintf
+                     "cannot generalize the type of this variable %s %s" name
+                     (show_ty ty))
+          | _, AtomSig_type _ -> ()
+          | _, AtomSig_module _ -> ())
+        l;
       ( ComSig_struct l,
         { ast = ref (Erecord (List.concat ctx)); pos = mod_expr.pos } )
 

@@ -22,11 +22,12 @@ let name_of_tvar tvar =
     varname
 
 let rec pp_ty = function
-  | Tvar { contents = Unbound { id; level ; _} } when level = generic ->
+  | Tvar { contents = { link = Unbound { id; level }; _ } } when level = generic
+    ->
       "'" ^ name_of_tvar id
-  | Tvar { contents = Unbound { id; level = _ ; 
-  _} } -> "'" ^ "_" ^ name_of_tvar id
-  | Tvar { contents = Linkto ty } -> pp_ty ty
+  | Tvar { contents = { link = Unbound { id; level = _ }; _ } } ->
+      "'" ^ "_" ^ name_of_tvar id
+  | Tvar { contents = { link = Linkto ty; _ } } -> pp_ty ty
   | Tunit -> "unit"
   | Tbool -> "bool"
   | Tint -> "int"
@@ -67,13 +68,13 @@ let rec pp_ty = function
   | Tunknown -> "Tunknown"
   | Ttag -> "Ttag"
   | Tpath (name, path, _) -> String.concat "." path ^ "." ^ name
-(*  | Tabs (name, _, []) -> name
-  | Tabs (name, _, x :: []) -> pp_ty x ^ " " ^ name
-  | Tabs (name, _, x :: xl) ->
-      let pp_x = pp_ty x in
-      "(" ^ pp_x
-      ^ List.fold_left (fun s x -> s ^ "," ^ pp_ty x) "" xl
-      ^ ") " ^ name*)
+(* | Tabs (name, _, []) -> name
+   | Tabs (name, _, x :: []) -> pp_ty x ^ " " ^ name
+   | Tabs (name, _, x :: xl) ->
+       let pp_x = pp_ty x in
+       "(" ^ pp_x
+       ^ List.fold_left (fun s x -> s ^ "," ^ pp_ty x) "" xl
+       ^ ") " ^ name*)
 (*^ show_ty ty*)
 (*| ty -> failwith (Printf.sprintf "pp_ty %s" (show_ty ty))*)
 

@@ -8,7 +8,9 @@ let gen_id () =
   incr curr_id;
   ret
 
-let new_type_var level = Tvar (ref (Unbound { id = Idint (gen_id ()); level; abstract=false}))
+let new_type_var level =
+  Tvar
+    (ref { link = Unbound { id = Idint (gen_id ()); level }; abstract = false })
 
 let min_opt lhs rhs =
   match (lhs, rhs) with
@@ -19,9 +21,8 @@ let min_opt lhs rhs =
 
 let rec get_type_level ty =
   match ty with
-  | Tvar { contents = Unbound { id = _; level; 
-  _ } } -> Some level
-  | Tvar { contents = Linkto ty } -> get_type_level ty
+  | Tvar { contents = { link = Unbound { id = _; level }; _ } } -> Some level
+  | Tvar { contents = { link = Linkto ty; _ } } -> get_type_level ty
   | Tunit | Tbool | Tint | Tfloat | Tchar | Tstring -> None
   | Tlist ty | Tref ty -> get_type_level ty
   | Tarrow (arg, ret) -> min_opt (get_type_level arg) (get_type_level ret)
@@ -65,9 +66,10 @@ let rec generalize level ty =
   match ty with
   | Tvar link -> (
       match link with
-      | { contents = Unbound { id; level = level' ; abstract} } when level' > level ->
-          link := Unbound { id; level = generic ; abstract}
-      | { contents = Linkto ty } -> generalize level ty
+      | { contents = { link = Unbound { id; level = level' }; abstract } }
+        when level' > level ->
+          link := { link = Unbound { id; level = generic }; abstract }
+      | { contents = { link = Linkto ty; _ } } -> generalize level ty
       | _ -> ())
   | Tlist ty -> generalize level ty
   | Tref ty -> generalize level ty
@@ -82,20 +84,22 @@ let rec generalize level ty =
       List.iter (fun (_, ty) -> generalize level ty) fields
   | _ -> ()
 
-
 let instantiate_sub id_var_hash level ty =
   let rec f ty =
     match ty with
     | Tvar link -> (
         match link with
-        | { contents = Unbound { id; level = level';abstract=false } } when level' = generic
-          -> (
+        | {
+         contents = { link = Unbound { id; level = level' }; abstract = false };
+        }
+          when level' = generic -> (
             try Hashtbl.find id_var_hash id
             with Not_found ->
               let tvar = new_type_var level in
               Hashtbl.add id_var_hash id tvar;
               tvar)
-        | { contents = Linkto ty } -> (*Tvar (ref (Linkto (f ty)))*) f ty
+        | { contents = { link = Linkto ty; abstract } } ->
+            Tvar { contents = { link = Linkto (f ty); abstract } }
         | _ -> ty)
     | Tlist ty -> Tlist (f ty)
     | Tref ty -> Tref (f ty)
@@ -142,18 +146,19 @@ let rec type_of_decl env name =
   | _ :: xs -> type_of_decl xs name
   | [] -> failwith (Printf.sprintf "type_of_decl %s" name)
 
+(*
 let rec is_unbound_tvar = function
   | Tvar link -> (
       match link with
       | { contents = Unbound _ } -> true
       | { contents = Linkto ty } -> is_unbound_tvar ty)
   | _ -> false
-
+*)
 let rec occursin id = function
   | Tvar link -> (
       match link with
-      | { contents = Unbound { id = id'; level = _; _ } } -> id = id'
-      | { contents = Linkto ty } -> occursin id ty)
+      | { contents = { link = Unbound { id = id'; level = _ }; _ } } -> id = id'
+      | { contents = { link = Linkto ty; _ } } -> occursin id ty)
   | Tlist ty -> occursin id ty
   | Tref ty -> occursin id ty
   | Tarrow (arg, ret) -> occursin id arg || occursin id ret
@@ -165,9 +170,11 @@ let rec occursin id = function
 let rec adjustlevel level = function
   | Tvar link -> (
       match link with
-      | { contents = Unbound { id = id'; level = level' ; abstract} } ->
-          if level < level' then link := Unbound { id = id'; level;abstract }
-      | { contents = Linkto ty } -> adjustlevel level ty)
+      | { contents = { link = Unbound { id = id'; level = level' }; abstract } }
+        ->
+          if level < level' then
+            link := { link = Unbound { id = id'; level }; abstract }
+      | { contents = { link = Linkto ty; _ } } -> adjustlevel level ty)
   | Tlist ty -> adjustlevel level ty
   | Tref ty -> adjustlevel level ty
   | Tarrow (arg, ret) ->
@@ -261,16 +268,23 @@ let rec unify env ty1 ty2 =
         failwith
           (Printf.sprintf "Cannot unify types between %s and %s" (pp_ty ty1)
              (pp_ty ty2)))
-  | Tvar { contents = Linkto t1 }, t2 | t1, Tvar { contents = Linkto t2 } ->
+  | Tvar { contents = { link = Linkto t1; abstract = false } }, t2
+  | t1, Tvar { contents = { link = Linkto t2; abstract = false } } ->
       unify env t1 t2
-  | Tvar ({ contents = Unbound { id; level;abstract=false; } } as link), ty
-  | ty, Tvar ({ contents = Unbound { id; level;abstract=false; } } as link) ->
+  | ( Tvar
+        ({ contents = { link = Unbound { id; level }; abstract = false } } as
+         link),
+      ty )
+  | ( ty,
+      Tvar
+        ({ contents = { link = Unbound { id; level }; abstract = false } } as
+         link) ) ->
       if occursin id ty then
         failwith
           (Printf.sprintf "unify error due to ocurr check %s %s" (pp_ty ty1)
              (pp_ty ty2));
       adjustlevel level ty;
-      link := Linkto ty
+      link := { link = Linkto ty; abstract = false }
   | Tlist t1, Tlist t2 -> unify env t1 t2
   | Tref t1, Tref t2 -> unify env t1 t2
   | Tformat (arg1, ret1), Tformat (arg2, ret2) ->
@@ -1110,9 +1124,9 @@ let type_letrec env pat_expr =
   add_env
 
 let rec check_valid_ty tyl = function
-  | Tvar { contents = Unbound { id; level = _;_; } } ->
+  | Tvar { contents = { link = Unbound { id; level = _ }; _ } } ->
       List.exists (occursin id) tyl
-  | Tvar { contents = Linkto t } -> check_valid_ty tyl t
+  | Tvar { contents = { link = Linkto t; _ } } -> check_valid_ty tyl t
   | Tlist t -> check_valid_ty tyl t
   | Tref t -> check_valid_ty tyl t
   | Tarrow (arg, ret) -> check_valid_ty tyl arg && check_valid_ty tyl ret
@@ -1296,16 +1310,23 @@ let rec filter env ty1 ty2 =
         failwith
           (Printf.sprintf "Cannot filter types between %s and %s" (pp_ty ty1)
              (pp_ty ty2)))
-  | Tvar { contents = Linkto t1 }, t2 | t1, Tvar { contents = Linkto t2 } ->
+  | Tvar { contents = { link = Linkto t1; abstract = false } }, t2
+  | t1, Tvar { contents = { link = Linkto t2; abstract = false } } ->
       filter env t1 t2
-  | Tvar ({ contents = Unbound { id; level;abstract=false; } } as link), ty 
-    | ty ,Tvar ({ contents = Unbound { id; level;abstract=false; } } as link) ->
+  | ( Tvar
+        ({ contents = { link = Unbound { id; level }; abstract = false } } as
+         link),
+      ty )
+  | ( ty,
+      Tvar
+        ({ contents = { link = Unbound { id; level }; abstract = false } } as
+         link) ) ->
       if occursin id ty then
         failwith
           (Printf.sprintf "filter error due to ocurr check %s %s" (pp_ty ty1)
              (pp_ty ty2));
       adjustlevel level ty;
-      link := Linkto ty;
+      link := { link = Linkto ty; abstract = false };
       ()
   | Tlist t1, Tlist t2 -> filter env t1 t2
   | Tref t1, Tref t2 -> filter env t1 t2
@@ -1344,15 +1365,19 @@ and filter_list env tyl1 tyl2 = List.iter2 (filter env) tyl1 tyl2
 
 and type_match env ty1 ty2 =
   match (ty1, ty2) with
-  | ty, (Tvar ({ contents = Unbound { id; level;abstract=true; } } as link)) ->
-        if occursin id ty then
+  | ( ty,
+      Tvar
+        ({ contents = { link = Unbound { id; level }; abstract = true } } as
+         link) ) ->
+      if occursin id ty then
         failwith
           (Printf.sprintf "filter error due to ocurr check %s %s" (pp_ty ty1)
              (pp_ty ty2));
       adjustlevel level ty;
-      link := Linkto ty;
+      link := { link = Linkto ty; abstract = true };
       ()
-  | Tvar { contents = Linkto t1 }, t2 | t1, Tvar { contents = Linkto t2 } ->
+  | Tvar { contents = { link = Linkto t1; _ } }, t2
+  | t1, Tvar { contents = { link = Linkto t2; _ } } ->
       type_match env t1 t2
   | Tlist t1, Tlist t2 -> type_match env t1 t2
   | Tref t1, Tref t2 -> type_match env t1 t2
@@ -1381,32 +1406,29 @@ and type_match env ty1 ty2 =
       type_match_list env (List.map snd fields1) (List.map snd fields2)
   | ty1, ty2 -> filter env ty1 ty2
 
-and type_match_list env tyl1 tyl2 =
-  List.iter2 (type_match env) tyl1 tyl2
+and type_match_list env tyl1 tyl2 = List.iter2 (type_match env) tyl1 tyl2
 
 let rec atomic_sig_match env sema_sig1 sema_sig2 =
   match sema_sig2 with
-  | (name, AtomSig_value ty') :: xs ->
-  atomic_sig_match env sema_sig1 xs;
-        (match find_val name sema_sig1 with
-        | Some ty -> type_match env ty ty'
-        | None -> failwith "cannot find value")
-  | (name, AtomSig_type decl') :: xs ->
-  atomic_sig_match env sema_sig1 xs;
-        (match find_type name sema_sig1 with
-        | Some decl ->
-            let tyl, ty = type_of_decl' decl
-            and tyl', ty' = type_of_decl' decl' in
-            type_match_list env tyl tyl';
-            type_match env ty ty'
-        | None -> failwith "cannot find type")
-      
-  | (name, AtomSig_module compound_sig') :: xs ->
+  | (name, AtomSig_value ty') :: xs -> (
       atomic_sig_match env sema_sig1 xs;
-        (match find_mod name sema_sig1 with
-        | Some compound_sig -> compound_sig_match env compound_sig compound_sig'
-        | None -> failwith "cannot find value")
-      
+      match find_val name sema_sig1 with
+      | Some ty -> type_match env ty ty'
+      | None -> failwith "cannot find value")
+  | (name, AtomSig_type decl') :: xs -> (
+      atomic_sig_match env sema_sig1 xs;
+      match find_type name sema_sig1 with
+      | Some decl ->
+          let tyl, ty = type_of_decl' decl
+          and tyl', ty' = type_of_decl' decl' in
+          type_match_list env tyl tyl';
+          type_match env ty ty'
+      | None -> failwith "cannot find type")
+  | (name, AtomSig_module compound_sig') :: xs -> (
+      atomic_sig_match env sema_sig1 xs;
+      match find_mod name sema_sig1 with
+      | Some compound_sig -> compound_sig_match env compound_sig compound_sig'
+      | None -> failwith "cannot find value")
   | [] -> ()
 
 and compound_sig_match env sema_sig1 sema_sig2 =
