@@ -177,8 +177,9 @@ and elaborate_mod_expr env mod_expr =
   | Mseal (mod_expr, sig_expr) ->
       let sema_sig, expr = elaborate_mod_expr env mod_expr in
       let seal_sig = elaborate_sig_expr env sig_expr in
-      compound_sig_match env sema_sig seal_sig |> ignore;
-      (seal_sig, expr)
+      let save_sig = instantiate_compound seal_sig in
+      compound_sig_match env sema_sig seal_sig;
+      (save_sig, expr)
   | Mstruct l ->
       let l, ctx =
         List.fold_left_map

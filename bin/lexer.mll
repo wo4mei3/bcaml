@@ -68,7 +68,7 @@ rule token = parse
 | ":=" { ASSIGN }
 | "::" { CONS }
 | "@"  { AT }
-
+| "^"  { STRCONCAT }
 | "+" { PLUS }
 | "-." { MINUSDOT }
 | "-" { MINUS }

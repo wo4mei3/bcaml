@@ -22,7 +22,7 @@
 %token FUN BAR "|" BARBAR "||"
 %token IF THEN ELSE WHEN
 %token REF DEREF "!" ASSIGN ":="
-%token AT "@"
+%token AT "@" STRCONCAT "^"
 %token EQ "=" NQ "<>" LT "<" GT ">" LE "<=" GE ">=" EQIMM "==" NQIMM "!="
 %token PLUS "+" PLUSDOT "+."
 %token STAR "*" STARDOT "*." STARSTAR "**"
@@ -46,7 +46,7 @@
 %left "||"
 %left "&&"
 %left "=" "<>" "<" ">" "<=" ">=" "==" "!="
-%right "@"
+%right "@" "^"
 %right "::"
 %left  "+" "+." "-" "-."
 %left  "*" "*." "/" "/." MOD LAND LOR LXOR
@@ -222,6 +222,7 @@ ident           : lid                               { $1 }
                 | "=="                              { Peqimm }
                 | "!="                              { Pnqimm }
                 | "@"                               { Pconcat }
+                | "^"                               { Pconcatstring }
                 | "+"                               { Paddint }
                 | "-"                               { Psubint }
                 | "*"                               { Pmulint }

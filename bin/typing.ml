@@ -8,9 +8,8 @@ let gen_id () =
   incr curr_id;
   ret
 
-let new_type_var level =
-  Tvar
-    (ref { link = Unbound { id = Idint (gen_id ()); level }; abstract = false })
+let new_type_var level abstract =
+  Tvar (ref { link = Unbound { id = Idint (gen_id ()); level }; abstract })
 
 let min_opt lhs rhs =
   match (lhs, rhs) with
@@ -84,7 +83,7 @@ let rec generalize level ty =
       List.iter (fun (_, ty) -> generalize level ty) fields
   | _ -> ()
 
-let instantiate_sub id_var_hash level ty =
+let instantiate_sub id_var_hash level ty is_expr =
   let rec f ty =
     match ty with
     | Tvar link -> (
@@ -92,14 +91,29 @@ let instantiate_sub id_var_hash level ty =
         | {
          contents = { link = Unbound { id; level = level' }; abstract = false };
         }
-          when level' = generic -> (
+          when level' = generic && is_expr -> (
             try Hashtbl.find id_var_hash id
             with Not_found ->
-              let tvar = new_type_var level in
+              let tvar = new_type_var level false in
               Hashtbl.add id_var_hash id tvar;
               tvar)
-        | { contents = { link = Linkto ty; abstract } } ->
+        | { contents = { link = Linkto ty; abstract = false } } when is_expr ->
+            Tvar { contents = { link = Linkto (f ty); abstract = false } }
+            (*let tvar = new_type_var level abstract in
+              ignore (ty, abstract);
+                tvar*)
+        | { contents = { link = Unbound { id; level = level' }; abstract } }
+          when level' = generic && not is_expr -> (
+            try Hashtbl.find id_var_hash id
+            with Not_found ->
+              let tvar = new_type_var level abstract in
+              Hashtbl.add id_var_hash id tvar;
+              tvar)
+        | { contents = { link = Linkto ty; abstract } } when not is_expr ->
             Tvar { contents = { link = Linkto (f ty); abstract } }
+            (*let tvar = new_type_var level abstract in
+              ignore (ty, abstract);
+                tvar*)
         | _ -> ty)
     | Tlist ty -> Tlist (f ty)
     | Tref ty -> Tref (f ty)
@@ -118,7 +132,10 @@ let instantiate_sub id_var_hash level ty =
   in
   f ty
 
-let instantiate level ty = instantiate_sub (Hashtbl.create 10) level ty
+let instantiate level ty = instantiate_sub (Hashtbl.create 10) level ty true
+
+let instantiate_mod_item id_var_hash level ty =
+  instantiate_sub id_var_hash level ty false
 
 let type_of_decl' = function
   | { ast = TDrecord (n, tyl, fields); _ } -> (
@@ -187,27 +204,29 @@ let rec adjustlevel level = function
 
 let rec instantiate_atomic_sub id_var_hash = function
   | n, AtomSig_value ty ->
-      (n, AtomSig_value (instantiate_sub id_var_hash generic ty))
+      (n, AtomSig_value (instantiate_mod_item id_var_hash generic ty))
   | n, AtomSig_type decl ->
       let decl =
         match decl with
         | { ast = TDrecord (n, tyl, fields); pos } -> (
             match
-              instantiate_sub id_var_hash generic (Trecord (n, tyl, fields))
+              instantiate_mod_item id_var_hash generic
+                (Trecord (n, tyl, fields))
             with
             | Trecord (n, tyl, fields) ->
                 { ast = TDrecord (n, tyl, fields); pos }
             | _ -> failwith "instantiate_sema_sig")
         | { ast = TDvariant (n, tyl, fields); pos } -> (
             match
-              instantiate_sub id_var_hash generic (Tvariant (n, tyl, fields))
+              instantiate_mod_item id_var_hash generic
+                (Tvariant (n, tyl, fields))
             with
             | Tvariant (n, tyl, fields) ->
                 { ast = TDvariant (n, tyl, fields); pos }
             | _ -> failwith "instantiate_sema_sig")
         | { ast = TDabbrev (n, tyl, ty); pos } -> (
             match
-              instantiate_sub id_var_hash generic
+              instantiate_mod_item id_var_hash generic
                 (Trecord (n, tyl, [ ("temp", ty) ]))
             with
             | Trecord (n, tyl, [ ("temp", ty) ]) ->
@@ -215,7 +234,7 @@ let rec instantiate_atomic_sub id_var_hash = function
             | _ -> failwith "instantiate_sema_sig")
         | { ast = TDabs (n, tyl, ty); pos } ->
             {
-              ast = TDabs (n, tyl, instantiate_sub id_var_hash generic ty);
+              ast = TDabs (n, tyl, instantiate_sub id_var_hash generic ty false);
               pos;
             }
       in
@@ -450,7 +469,7 @@ let rec curry = function
 let type_format fmt expr =
   let args = ref 0 in
   let len = String.length fmt in
-  let ty_result = new_type_var notgeneric in
+  let ty_result = new_type_var notgeneric false in
   let rec skip_args j =
     if j >= len then j
     else
@@ -489,7 +508,7 @@ let type_format fmt expr =
 
 let type_prim level = function
   | Peq | Pnq | Plt | Pgt | Ple | Pge | Peqimm | Pnqimm ->
-      let tvar = new_type_var level in
+      let tvar = new_type_var level false in
       Tarrow (tvar, Tarrow (tvar, Tbool))
   | Pnot -> Tarrow (Tbool, Tbool)
   | Pand | Por -> Tarrow (Tbool, Tarrow (Tbool, Tbool))
@@ -514,16 +533,16 @@ let type_prim level = function
   | Pstringoffloat -> Tarrow (Tfloat, Tstring)
   | Pfloatofstring -> Tarrow (Tstring, Tfloat)
   | Pconcat ->
-      let tvar = new_type_var level in
+      let tvar = new_type_var level false in
       Tarrow (Tlist tvar, Tarrow (Tlist tvar, Tlist tvar))
   | Pfailwith ->
-      let tvar = new_type_var level in
+      let tvar = new_type_var level false in
       Tarrow (Tstring, tvar)
   | Pprintf ->
-      let remain_ty = new_type_var notgeneric in
+      let remain_ty = new_type_var notgeneric false in
       Tarrow (Tformat (remain_ty, Tunit), remain_ty)
   | Psprintf ->
-      let remain_ty = new_type_var notgeneric in
+      let remain_ty = new_type_var notgeneric false in
       Tarrow (Tformat (remain_ty, Tstring), remain_ty)
 
 let unify_pat sema_sig pat actual_ty expected_ty =
@@ -568,24 +587,26 @@ let rec type_pat env add_env level pat ty =
       unify_pat env pat ty cst_ty;
       env
   | Ptuple patl ->
-      let tyl = List.init (List.length patl) (fun _ -> new_type_var level) in
+      let tyl =
+        List.init (List.length patl) (fun _ -> new_type_var level false)
+      in
       unify env (Ttuple tyl) ty;
       List.fold_left2
         (fun add_env -> type_pat env add_env level)
         add_env patl tyl
   | Pnil ->
-      unify_pat env pat ty (Tlist (new_type_var level));
+      unify_pat env pat ty (Tlist (new_type_var level false));
       env
   | Pcons (car, cdr) ->
-      let ty1 = new_type_var level in
-      let ty2 = new_type_var level in
+      let ty1 = new_type_var level false in
+      let ty2 = new_type_var level false in
       let add_env = type_pat env add_env level car ty1 in
       let add_env = type_pat env add_env level cdr ty2 in
       unify_pat env pat ty2 (Tlist ty1);
       unify_pat env pat ty ty2;
       add_env
   | Pref expr ->
-      let ty1 = new_type_var level in
+      let ty1 = new_type_var level false in
       let add_env = type_pat env add_env level expr ty1 in
       unify_pat env pat ty (Tref ty1);
       add_env
@@ -650,8 +671,8 @@ and unify_expr env expr actual_ty expected_ty =
 and function_error env level expr ty =
   failwith
     (try
-       let param_ty = new_type_var level in
-       let ret_ty = new_type_var level in
+       let param_ty = new_type_var level false in
+       let ret_ty = new_type_var level false in
        unify env ty (Tarrow (param_ty, ret_ty));
        Printf.sprintf "%s This function is applied to too many arguments.\n"
          (print_errloc !file expr.pos)
@@ -695,16 +716,16 @@ and type_expr env level expr =
       let ty = Ttuple (List.map (fun t -> type_expr env level t) l) in
       ty
   | Enil ->
-      let ty = Tlist (new_type_var level) in
+      let ty = Tlist (new_type_var level false) in
       ty
   | Econs (car, cdr) ->
       let ty = type_expr env level cdr in
-      let expected_ty = new_type_var level in
+      let expected_ty = new_type_var level false in
       unify env (Tlist expected_ty) ty;
       type_expect env level car expected_ty;
       ty
   | Elist l ->
-      let ty = new_type_var level in
+      let ty = new_type_var level false in
       List.iter (fun expr -> unify env ty (type_expr env level expr)) l;
       let ty = Tlist ty in
       ty
@@ -713,7 +734,7 @@ and type_expr env level expr =
       let ty = Tref ty in
       ty
   | Ederef e ->
-      let ty = new_type_var level in
+      let ty = new_type_var level false in
       type_expect env level e (Tref ty);
       ty
   | Eassign (lhs, rhs) ->
@@ -721,7 +742,7 @@ and type_expr env level expr =
       type_expect env level lhs (Tref ty);
       Tunit
   | Eloc _ ->
-      let ty = new_type_var level in
+      let ty = new_type_var level false in
       let ty = Tref ty in
       ty
   | Eunit -> Tunit
@@ -826,8 +847,8 @@ and type_expr env level expr =
       let ty =
         List.fold_left
           (fun fct_ty_ arg_ty ->
-            let param_ty = new_type_var level in
-            let ret_ty = new_type_var level in
+            let param_ty = new_type_var level false in
+            let ret_ty = new_type_var level false in
             (try unify env fct_ty_ (Tarrow (param_ty, ret_ty))
              with _ -> function_error env level p fct_ty);
             unify env arg_ty param_ty;
@@ -926,8 +947,8 @@ and type_expr env level expr =
       let ty =
         List.fold_left
           (fun fct_ty_ arg_ty ->
-            let param_ty = new_type_var level in
-            let ret_ty = new_type_var level in
+            let param_ty = new_type_var level false in
+            let ret_ty = new_type_var level false in
             (try unify env fct_ty_ (Tarrow (param_ty, ret_ty))
              with _ -> function_error env level p fct_ty);
             unify env arg_ty param_ty;
@@ -940,8 +961,8 @@ and type_expr env level expr =
       let ty =
         List.fold_left
           (fun fct_ty_ arg_ty ->
-            let param_ty = new_type_var level in
-            let ret_ty = new_type_var level in
+            let param_ty = new_type_var level false in
+            let ret_ty = new_type_var level false in
             (try unify env fct_ty_ (Tarrow (param_ty, ret_ty))
              with _ -> function_error env level fct fct_ty);
             unify env arg_ty param_ty;
@@ -952,7 +973,7 @@ and type_expr env level expr =
       ty
   | Elet (pat_expr, body) ->
       let patl = List.map (fun (pat, _) -> pat) pat_expr in
-      let tyl = List.map (fun (_, _) -> new_type_var level) pat_expr in
+      let tyl = List.map (fun (_, _) -> new_type_var level false) pat_expr in
       let add_env =
         List.fold_left2 (fun add_env -> type_pat env add_env level) [] patl tyl
       in
@@ -965,7 +986,7 @@ and type_expr env level expr =
       ty
   | Eletrec (pat_expr, body) ->
       let patl = List.map (fun (pat, _) -> pat) pat_expr in
-      let tyl = List.map (fun (_, _) -> new_type_var level) pat_expr in
+      let tyl = List.map (fun (_, _) -> new_type_var level false) pat_expr in
       let add_env =
         List.fold_left2 (fun add_env -> type_pat env add_env level) [] patl tyl
       in
@@ -977,7 +998,7 @@ and type_expr env level expr =
       let ty = type_expr (add_env @ env) level body in
       ty
   | Efix (e, l) ->
-      let ty = new_type_var level in
+      let ty = new_type_var level false in
       type_expect env level e ty;
       List.iter (fun (_, e) -> type_expect env level e ty) l;
       ty
@@ -987,7 +1008,7 @@ and type_expr env level expr =
           failwith
             (Printf.sprintf "%s empty function" (print_errloc !file expr.pos))
       | [ ({ ast = { contents = Pparams patl }; _ }, e) ] ->
-          let tyl = List.map (fun _ -> new_type_var level) patl in
+          let tyl = List.map (fun _ -> new_type_var level false) patl in
           let add_env =
             List.fold_left2
               (fun add_env -> type_pat env add_env level)
@@ -1002,8 +1023,8 @@ and type_expr env level expr =
           expr.ast := !((curry expr).ast);
           ty
       | pat_expr ->
-          let arg_ty = new_type_var level in
-          let ret_ty = new_type_var level in
+          let arg_ty = new_type_var level false in
+          let ret_ty = new_type_var level false in
           List.iter
             (fun (pat, e) ->
               let add_env = type_pat env [] level pat arg_ty in
@@ -1094,7 +1115,7 @@ and type_variant_expr env level (tag_name, expr) =
 let type_let env pat_expr =
   let level = 0 in
   let patl = List.map (fun (pat, _) -> pat) pat_expr in
-  let tyl = List.map (fun (_, _) -> new_type_var (level + 1)) pat_expr in
+  let tyl = List.map (fun (_, _) -> new_type_var (level + 1) false) pat_expr in
   let add_env =
     List.fold_left2
       (fun add_env -> type_pat env add_env (level + 1))
@@ -1110,7 +1131,7 @@ let type_let env pat_expr =
 let type_letrec env pat_expr =
   let level = 0 in
   let patl = List.map (fun (pat, _) -> pat) pat_expr in
-  let tyl = List.map (fun (_, _) -> new_type_var (level + 1)) pat_expr in
+  let tyl = List.map (fun (_, _) -> new_type_var (level + 1) false) pat_expr in
   let add_env =
     List.fold_left2
       (fun add_env -> type_pat env add_env (level + 1))
@@ -1355,8 +1376,8 @@ let rec filter env ty1 ty2 =
       filter_list env (List.map snd fields1) (List.map snd fields2)
   | ty1, ty2 when ty1 = ty2 -> ()
   | _ ->
-      Printf.printf "Cannot filter types between %s and %s" (show_ty ty1)
-        (show_ty ty2);
+      (*Printf.printf "Cannot filter types between %s and %s" (show_ty ty1)
+        (show_ty ty2);*)
       failwith
         (Printf.sprintf "Cannot filter types between %s and %s" (pp_ty ty1)
            (pp_ty ty2))
@@ -1374,7 +1395,7 @@ and type_match env ty1 ty2 =
           (Printf.sprintf "filter error due to ocurr check %s %s" (pp_ty ty1)
              (pp_ty ty2));
       adjustlevel level ty;
-      link := { link = Linkto ty; abstract = true };
+      link := { link = Linkto ty; abstract = false };
       ()
   | Tvar { contents = { link = Linkto t1; _ } }, t2
   | t1, Tvar { contents = { link = Linkto t2; _ } } ->
