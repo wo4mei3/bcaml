@@ -331,8 +331,8 @@ let rec unify env ty1 ty2 =
       unify_list env (List.map snd fields1) (List.map snd fields2)
   | ty1, ty2 when ty1 = ty2 -> ()
   | _ ->
-      Printf.printf "Cannot unify types between %s and %s" (show_ty ty1)
-        (show_ty ty2);
+      (*Printf.printf "Cannot unify types between %s and %s" (show_ty ty1)
+        (show_ty ty2);*)
       failwith
         (Printf.sprintf "Cannot unify types between %s and %s" (pp_ty ty1)
            (pp_ty ty2))

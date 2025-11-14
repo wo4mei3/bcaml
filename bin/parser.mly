@@ -5,6 +5,14 @@
   let make_pat pat' i j = {ast = ref pat' ; pos = make_loc i j}
   let make_decl decl' i j = {ast = decl' ; pos = make_loc i j}
   let make_def mod' i j = {ast = mod' ; pos = make_loc i j}
+  let rec make_sfunctor args body i j =
+    match args with
+    | x::xs -> make_def (Sfunctor(x, make_sfunctor xs body i j)) i j
+    | [] -> body
+  let rec make_mfunctor args body i j =
+    match args with
+    | x::xs -> make_def (Mfunctor(x, make_mfunctor xs body i j)) i j
+    | [] -> body
 %}
 %token LPAREN "(" RPAREN ")" LBRACK "[" RBRACK "]" LBRACE "{" RBRACE "}"
 %token COLON ":" COMMA "," SEMI ";" SEMISEMI ";;" CONS "::" QUOTE "'" DOT "."
@@ -71,17 +79,23 @@ def_            : TYPE separated_nonempty_list(AND, ty_def)
                 | LET REC separated_nonempty_list(AND, let_rec_def)
                                                     { make_def(Bletrec $3) ($startpos($1)) ($endpos($3)) }
                 | OPEN path                         { make_def(Bopen $2) ($startpos($1)) ($endpos($2)) }                                         
-                | MODULE UID "=" mod_expr           { make_def(Bmodule($2,$4)) ($startpos($1)) ($endpos($2)) }  
-                | MODULE UID COLON sig_expr "=" mod_expr 
-                { make_def(Bmodule($2,make_def(Mseal($6, $4)) ($startpos($4)) ($endpos($6)))) ($startpos($1)) ($endpos($6)) }  
-                | MODULE TYPE UID "=" sig_expr      { make_def(Bsig($3,$5)) ($startpos($1)) ($endpos($5)) }  
+                | MODULE UID sig_args "=" mod_expr      
+                                                    { make_def(Bmodule($2,make_mfunctor $3 $5 ($startpos($1)) ($endpos($5)))) ($startpos($1)) ($endpos($5)) }
+                | MODULE UID sig_args COLON sig_expr "=" mod_expr      
+                { make_def(Bmodule($2,(make_mfunctor $3 (make_def(Mseal($7,$5)) ($startpos($1)) ($endpos($7)))) ($startpos($1)) ($endpos($7)))) ($startpos($1)) ($endpos($7)) }
+                | MODULE TYPE UID sig_args "=" sig_expr      
+                                                    { make_def(Bsig($3,make_sfunctor $4 $6 ($startpos($1)) ($endpos($6)))) ($startpos($1)) ($endpos($6)) }
 
 sig_def         : VAL LID COLON ty                  { make_def(Dval($2,$4)) ($startpos($1)) ($endpos($4)) }
                 | TYPE separated_nonempty_list(AND, ty_def)
                                                     { make_def(Dtype $2)($startpos($1)) ($endpos($2)) }
                 | MODULE UID ":" sig_expr           { make_def(Dmodule($2,$4)) ($startpos($1)) ($endpos($4)) }  
-                | MODULE TYPE UID "=" sig_expr      { make_def(Dsig($3,$5)) ($startpos($1)) ($endpos($5)) }  
+                | MODULE TYPE UID sig_args "=" sig_expr      
+                                                    { make_def(Dsig($3,(make_sfunctor $4 $6 ($startpos($1)) ($endpos($6))))) ($startpos($1)) ($endpos($6)) }
                 | INCLUDE path                      { make_def(Dinclude $2) ($startpos($1)) ($endpos($2)) }    
+
+sig_args        : list(LPAREN UID COLON sig_expr RPAREN{($2,$4)})
+                                                    { $1 }
 
 sig_expr        : UID                               { make_def(Svar $1) ($startpos($1)) ($endpos($1))  }
                 | UID WITH TYPE separated_nonempty_list(AND, ty_def_)

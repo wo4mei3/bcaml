@@ -6,8 +6,7 @@ module type ORDERED_TYPE =
      val compare: t -> t -> comparison
    end
 
-module Set =
-   functor (Elt: ORDERED_TYPE) ->
+module Set (Elt: ORDERED_TYPE)=
      struct
        type element = Elt.t
        type set = element list
