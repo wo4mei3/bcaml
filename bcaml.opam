@@ -1,0 +1,15 @@
+opam-version: "2.0"
+name: "bcaml"
+version: "0.1.0"
+synopsis: "BCaml: a bear's interpreter of caml language"
+description: "A type-checking OCaml interpreter with module system"
+maintainer: "wo4mei3@example.com"
+authors: ["wo4mei3"]
+license: "MIT"
+homepage: "https://github.com/wo4mei3/bcaml1"
+bug-reports: "https://github.com/wo4mei3/bcaml1/issues"
+depends: [
+  "ocaml" {>= "4.14"}
+  "dune" {>= "3.0"}
+  "alcotest" {>= "1.7.0"}
+]

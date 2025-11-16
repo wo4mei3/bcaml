@@ -1,0 +1,11 @@
+(menhir
+ (modules parser))
+
+(ocamllex lexer)
+
+(library
+ (name bcaml)
+ (modules eval typing syntax printer parser lexer)
+ (preprocess
+  (pps ppx_import ppx_deriving.show))
+ (libraries menhirLib))

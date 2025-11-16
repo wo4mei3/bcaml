@@ -1,10 +1,10 @@
-open Eval
-open Syntax
-open Typing
-open Printer
+open Bcaml__Eval
+open Bcaml__Typing
+open Bcaml__Syntax
+open Bcaml__Printer
 
 let is_repl = ref false
-let parser = ref Parser.top
+let parser = ref Bcaml__Parser.top
 let fnames = ref []
 let if_is_repl f = if !is_repl then f ()
 
@@ -24,17 +24,12 @@ let rec elaborate_decl_expr env decl_expr =
 
 and elaborate_sig_expr env sig_expr =
   match sig_expr.ast with
-  | Svar name -> (
+  | Svar name -> 
       let compound_sig = access_compound [ name ] (ComSig_struct env) in
-      let id_var_hash = Hashtbl.create 10 in
-      let compound_sig = instantiate_compound_sub id_var_hash compound_sig in
-      match compound_sig with
-      | ComSig_struct l -> ComSig_struct l
-      | ComSig_fun (arg, ret) -> ComSig_fun (arg, ret))
+      instantiate_compound compound_sig 
   | Sfunctor ((name, arg), ret) ->
       let arg = elaborate_sig_expr env arg in
       let ret = elaborate_sig_expr ((name, AtomSig_module arg) :: env) ret in
-
       ComSig_fun ((name, AtomSig_module arg), ret)
   | Sstruct l ->
       let l =
@@ -112,11 +107,11 @@ let rec elaborate_bind_expr env mod_expr =
       if List.mem fname !fnames then ([], [])
       else
         let add_env = ref [] in
-        if !is_repl then parser := Parser.top;
+        if !is_repl then parser := Bcaml__Parser.top;
         do_interp fname
           (open_file (String.uncapitalize_ascii fname ^ ".bc"))
           add_env;
-        if !is_repl then parser := Parser.repl;
+        if !is_repl then parser := Bcaml__Parser.repl;
         (* fnames := fname :: !fnames; *)
         (!add_env, [])
   | _ -> ([], [])
@@ -217,13 +212,13 @@ and do_interp fname inchan env =
         print_string "# ";
         flush stdout);
     let filebuf = Lexing.from_channel inchan in
-    let ast = !parser Lexer.token filebuf in
+    let ast = !parser Bcaml__Lexer.token filebuf in
     let e = interp !env ast in
     env := e @ !env
   with
   | InterpreterError msg -> print_endline ("InterpreterError " ^ msg)
   | Failure msg -> print_endline ("Failure " ^ msg)
-  | Parser.Error -> print_endline "parser error"
+  | Bcaml__Parser.Error -> print_endline "parser error"
   | Not_found -> print_endline "an unbound variable found"
   | _ -> print_endline "something went wrong"
 
@@ -234,7 +229,7 @@ and open_file fname =
 let () =
   let argc = Array.length Sys.argv in
   if argc = 1 then (
-    parser := Parser.repl;
+    parser := Bcaml__Parser.repl;
     let env = ref [] in
     print_endline "        BCaml a bear's interpreter of caml language";
     print_endline "";

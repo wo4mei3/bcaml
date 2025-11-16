@@ -1,12 +1,5 @@
-(menhir
- (modules parser))
-
-(ocamllex lexer)
-
 (executable
- (preprocess
-  (pps ppx_import ppx_deriving.show))
- (modes byte exe)
  (name main)
- (ocamlc_flags
-  (:standard -g)))
+ (public_name bcaml)
+ (modules main)
+ (libraries bcaml))
