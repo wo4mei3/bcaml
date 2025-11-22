@@ -266,7 +266,8 @@ let rec access_atomic path sema_sig =
 and access_compound path sema_sig =
   match (path, sema_sig) with
   | s :: path, ComSig_struct l when List.mem_assoc s l ->
-      access_atomic (s :: path) (s, List.assoc s l)
+      access_atomic (s :: path)
+        (s, try List.assoc s l with _ -> failwith (s ^ "not found"))
   | [], sema_sig -> sema_sig
   | _ -> failwith ("invalid path" ^ show_path path)
 
