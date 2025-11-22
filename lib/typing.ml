@@ -1431,31 +1431,51 @@ and type_match_list env tyl1 tyl2 = List.iter2 (type_match env) tyl1 tyl2
 
 let rec atomic_sig_match env sema_sig1 sema_sig2 =
   match sema_sig2 with
-  | (name, AtomSig_value ty') :: xs -> (
-      atomic_sig_match env sema_sig1 xs;
-      match find_val name sema_sig1 with
-      | Some ty -> type_match env ty ty'
-      | None -> failwith "cannot find value")
-  | (name, AtomSig_type decl') :: xs -> (
-      atomic_sig_match env sema_sig1 xs;
-      match find_type name sema_sig1 with
-      | Some decl ->
-          let tyl, ty = type_of_decl' decl
-          and tyl', ty' = type_of_decl' decl' in
-          type_match_list env tyl tyl';
-          type_match env ty ty'
-      | None -> failwith "cannot find type")
-  | (name, AtomSig_module compound_sig') :: xs -> (
-      atomic_sig_match env sema_sig1 xs;
-      match find_mod name sema_sig1 with
-      | Some compound_sig -> compound_sig_match env compound_sig compound_sig'
-      | None -> failwith "cannot find value")
-  | [] -> ()
+  | (_, AtomSig_value ty') :: ys ->
+      let rec aux = function
+        | (_, AtomSig_value ty) :: xs -> (
+            try
+              type_match env ty ty';
+              xs
+            with _ -> aux xs)
+        | _ :: xs -> aux xs
+        | [] -> failwith "cannot find value"
+      in
+      let xs = aux sema_sig1 in
+      atomic_sig_match env xs ys
+  | (_, AtomSig_type decl') :: ys ->
+      let rec aux = function
+        | (_, AtomSig_type decl) :: xs -> (
+            try
+              let tyl, ty = type_of_decl' decl
+              and tyl', ty' = type_of_decl' decl' in
+              type_match_list env tyl tyl';
+              type_match env ty ty';
+              xs
+            with _ -> aux xs)
+        | _ :: xs -> aux xs
+        | [] -> failwith "cannot find type"
+      in
+      let xs = aux sema_sig1 in
+      atomic_sig_match env xs ys
+  | (_, AtomSig_module compound_sig') :: ys ->
+      let rec aux = function
+        | (_, AtomSig_module compound_sig) :: xs -> (
+            try
+              compound_sig_match env compound_sig compound_sig';
+              xs
+            with _ -> aux xs)
+        | _ :: xs -> aux xs
+        | [] -> failwith "cannot find type"
+      in
+      let xs = aux sema_sig1 in
+      atomic_sig_match env xs ys; atomic_sig_match env xs ys
+  | _ -> ()
 
 and compound_sig_match env sema_sig1 sema_sig2 =
   match (sema_sig1, sema_sig2) with
   | ComSig_struct l1, ComSig_struct l2 -> atomic_sig_match env l1 l2
   | ComSig_fun (arg1, ret1), ComSig_fun (arg2, ret2) ->
       atomic_sig_match env [ arg2 ] [ arg1 ];
-      compound_sig_match (arg1 :: env) ret1 ret2
+      compound_sig_match env ret1 ret2
   | _ -> failwith "compound signature matching"

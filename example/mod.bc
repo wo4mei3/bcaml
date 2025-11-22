@@ -160,3 +160,7 @@ end
 
 module M : sig val w : int end = F Bool Int
 *)
+
+module A(S:functor (T:sig end)->sig end) = struct end
+module  B(U:sig end) = struct end
+module C = A B

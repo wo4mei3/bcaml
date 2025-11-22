@@ -24,9 +24,9 @@ let rec elaborate_decl_expr env decl_expr =
 
 and elaborate_sig_expr env sig_expr =
   match sig_expr.ast with
-  | Svar name -> 
+  | Svar name ->
       let compound_sig = access_compound [ name ] (ComSig_struct env) in
-      instantiate_compound compound_sig 
+      instantiate_compound compound_sig
   | Sfunctor ((name, arg), ret) ->
       let arg = elaborate_sig_expr env arg in
       let ret = elaborate_sig_expr ((name, AtomSig_module arg) :: env) ret in
@@ -146,10 +146,10 @@ and elaborate_mod_expr env mod_expr =
         List.fold_left
           (fun (fct_sig, l) (arg_sig, arg_expr) ->
             match fct_sig with
-            | ComSig_fun (((name, AtomSig_module param_sig) as param), ret) ->
-                (*let subst = compound_sig_match env arg_sig param_sig in
-                  let ret = remove_tabs_from_compound (param :: env) subst ret in*)
-                (compound_sig_match env arg_sig param_sig, param) |> ignore;
+            | ComSig_fun ((name, AtomSig_module param_sig), ret) ->
+                compound_sig_match
+                  ((name, AtomSig_module param_sig) :: env)
+                  arg_sig param_sig;
                 ( ret,
                   ({ ast = ref (Pvar name); pos = mod_expr.pos }, arg_expr) :: l
                 )
