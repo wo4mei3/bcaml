@@ -1,0 +1,14 @@
+module type SHOW = sig
+  type t
+  val show : t -> string
+end
+
+module type ORD = sig
+  type t
+  val compare : t -> t -> int
+end
+
+module IntShow : SHOW with type t = int = struct
+  type t = int
+  let show x = string_of_int x 
+end

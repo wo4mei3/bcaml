@@ -97,8 +97,8 @@ let instantiate_sub id_var_hash level ty is_expr =
               let tvar = new_type_var level false in
               Hashtbl.add id_var_hash id tvar;
               tvar)
-        | { contents = { link = Linkto ty; abstract = false } } when is_expr ->
-            Tvar { contents = { link = Linkto (f ty); abstract = false } }
+        | { contents = { link = Linkto ty; abstract = false } } ->
+            f ty
             (*let tvar = new_type_var level abstract in
               ignore (ty, abstract);
                 tvar*)
@@ -1314,14 +1314,14 @@ let check_recursive_def decl =
   aux decl
 
 (* instantiate ty1 so that it is equal to ty2 *)
-let rec filter env ty1 ty2 =
+let rec filter env ty1 ty2  =
   match (ty1, ty2) with
-  | Tvar link1, Tvar link2 when link1 = link2 -> ()
-  | Tvar { contents = { link = Linkto t1; abstract = false } }, t2
-  | t1, Tvar { contents = { link = Linkto t2; abstract = false } } ->
-      filter env t1 t2
+  | Tvar link1, Tvar link2 when link1 = link2 -> []
+  | Tvar { contents = { link = Linkto t1; _ } }, t2
+  | t1, Tvar { contents = { link = Linkto t2; _ } } ->
+      filter env t1 t2 
   | ( Tvar
-        ({ contents = { link = Unbound { id; level }; abstract = false } } as
+        ({ contents = { link = Unbound { id; level }; abstract } } as
          link),
       ty )
   (*| ( ty,
@@ -1333,34 +1333,34 @@ let rec filter env ty1 ty2 =
           (Printf.sprintf "filter error due to ocurr check %s %s" (pp_ty ty1)
              (pp_ty ty2));
       adjustlevel level ty;
-      link := { link = Linkto ty; abstract = false };
-      ()
-  | Tlist t1, Tlist t2 -> filter env t1 t2
-  | Tref t1, Tref t2 -> filter env t1 t2
+      link := { link = Linkto ty; abstract = abstract };
+      link::[]
+  | Tlist t1, Tlist t2 -> filter env t1 t2 
+  | Tref t1, Tref t2 -> filter env t1 t2 
   | Tformat (arg1, ret1), Tformat (arg2, ret2) ->
-      filter env arg1 arg2;
-      filter env ret1 ret2
+      filter env arg1 arg2 @
+      filter env ret1 ret2 
   | Tarrow (arg1, ret1), Tarrow (arg2, ret2) ->
-      filter env arg1 arg2;
-      filter env ret1 ret2
-  | Ttuple tyl1, Ttuple tyl2 -> filter_list env tyl1 tyl2
+      filter env arg1 arg2 @
+      filter env ret1 ret2 
+  | Ttuple tyl1, Ttuple tyl2 -> filter_list env tyl1 tyl2 
   | Tconstr (name1, tyl1), Tconstr (name2, tyl2) when name1 = name2 ->
-      filter_list env tyl1 tyl2
+      filter_list env tyl1 tyl2 
   | Tconstr (name1, tyl1), Trecord (name2, tyl2, _) when name1 = name2 ->
-      filter_list env tyl1 tyl2
+      filter_list env tyl1 tyl2 
   | Tconstr (name1, tyl1), Tvariant (name2, tyl2, _) when name1 = name2 ->
-      filter_list env tyl1 tyl2
+      filter_list env tyl1 tyl2 
   | Trecord (name1, tyl1, _), Tconstr (name2, tyl2) when name1 = name2 ->
-      filter_list env tyl1 tyl2
+      filter_list env tyl1 tyl2 
   | Tvariant (name1, tyl1, _), Tconstr (name2, tyl2) when name1 = name2 ->
-      filter_list env tyl1 tyl2
+      filter_list env tyl1 tyl2 
   | Trecord (name1, _, fields1), Trecord (name2, _, fields2) when name1 = name2
     ->
-      filter_list env (List.map snd fields1) (List.map snd fields2)
+      filter_list env (List.map snd fields1) (List.map snd fields2) 
   | Tvariant (name1, _, fields1), Tvariant (name2, _, fields2)
     when name1 = name2 ->
-      filter_list env (List.map snd fields1) (List.map snd fields2)
-  | ty1, ty2 when ty1 = ty2 -> ()
+      filter_list env (List.map snd fields1) (List.map snd fields2) 
+  | ty1, ty2 when ty1 = ty2 -> []
   | _ ->
       (*Printf.printf "Cannot filter types between %s and %s" (show_ty ty1)
         (show_ty ty2);*)
@@ -1368,21 +1368,14 @@ let rec filter env ty1 ty2 =
         (Printf.sprintf "Cannot filter types between %s and %s" (pp_ty ty1)
            (pp_ty ty2))
 
-and filter_list env tyl1 tyl2 = List.iter2 (filter env) tyl1 tyl2
+and filter_list env tyl1 tyl2  = List.map2 (filter env) tyl1 tyl2 |> List.concat
 
-and type_match env ty1 ty2 is_apply =
+and type_match env ty1 ty2  =
   match (ty1, ty2) with
-  | ( ty,
+  | ( _,
       Tvar
-        ({ contents = { link = Unbound { id; level }; abstract = true } } as
-         link) ) ->
-      if occursin id ty then
-        failwith
-          (Printf.sprintf "filter error due to ocurr check %s %s" (pp_ty ty1)
-             (pp_ty ty2));
-      adjustlevel level ty;
-      link := { link = Linkto ty; abstract = if is_apply then false else true };
-      ()
+        ({ contents = { link = _; abstract = true } })  ) ->
+   filter env ty2 ty1 
   | Tpath (_, path, Tconstr (name, [])), ty2
   | ty2, Tpath (_, path, Tconstr (name, [])) -> (
       let compound_sig = access_compound path (ComSig_struct env) in
@@ -1390,92 +1383,97 @@ and type_match env ty1 ty2 is_apply =
         type_of_decl' (Option.get (find_type name (get_struct compound_sig)))
       in
       (*print_endline (show_ty ty1);*)
-      try type_match env ty1 ty2 is_apply
+      try type_match env ty1 ty2 
       with _ ->
         Printf.printf "Cannot filter types between %s and %s" (pp_ty ty1)
           (pp_ty ty2);
         failwith
           (Printf.sprintf "Cannot filter types between %s and %s" (pp_ty ty1)
              (pp_ty ty2)))
-  | Tvar { contents = { link = Linkto t1; _ } }, t2
-  | t1, Tvar { contents = { link = Linkto t2; _ } } ->
-      type_match env t1 t2 is_apply
-  | Tlist t1, Tlist t2 -> type_match env t1 t2 is_apply
-  | Tref t1, Tref t2 -> type_match env t1 t2 is_apply
+  | Tvar { contents = { link = Linkto t1; abstract = false} }, t2
+  | t1, Tvar { contents = { link = Linkto t2; abstract = false } } ->
+      type_match env t1 t2 
+  | Tlist t1, Tlist t2 -> type_match env t1 t2 
+  | Tref t1, Tref t2 -> type_match env t1 t2 
   | Tformat (arg1, ret1), Tformat (arg2, ret2) ->
-      type_match env arg1 arg2 is_apply;
-      type_match env ret1 ret2 is_apply
+      type_match env arg1 arg2 @
+      type_match env ret1 ret2 
   | Tarrow (arg1, ret1), Tarrow (arg2, ret2) ->
-      type_match env arg1 arg2 is_apply;
-      type_match env ret1 ret2 is_apply
-  | Ttuple tyl1, Ttuple tyl2 -> type_match_list env tyl1 tyl2 is_apply
+      type_match env arg1 arg2 @
+      type_match env ret1 ret2 
+  | Ttuple tyl1, Ttuple tyl2 -> type_match_list env tyl1 tyl2 
   | Tconstr (name1, tyl1), Tconstr (name2, tyl2) when name1 = name2 ->
-      type_match_list env tyl1 tyl2 is_apply
+      type_match_list env tyl1 tyl2 
   | Tconstr (name1, tyl1), Trecord (name2, tyl2, _) when name1 = name2 ->
-      type_match_list env tyl1 tyl2 is_apply
+      type_match_list env tyl1 tyl2 
   | Tconstr (name1, tyl1), Tvariant (name2, tyl2, _) when name1 = name2 ->
-      type_match_list env tyl1 tyl2 is_apply
+      type_match_list env tyl1 tyl2 
   | Trecord (name1, tyl1, _), Tconstr (name2, tyl2) when name1 = name2 ->
-      type_match_list env tyl1 tyl2 is_apply
+      type_match_list env tyl1 tyl2 
   | Tvariant (name1, tyl1, _), Tconstr (name2, tyl2) when name1 = name2 ->
-      type_match_list env tyl1 tyl2 is_apply
+      type_match_list env tyl1 tyl2 
   | Trecord (name1, _, fields1), Trecord (name2, _, fields2) when name1 = name2
     ->
-      type_match_list env (List.map snd fields1) (List.map snd fields2) is_apply
+      type_match_list env (List.map snd fields1) (List.map snd fields2) 
   | Tvariant (name1, _, fields1), Tvariant (name2, _, fields2)
     when name1 = name2 ->
-      type_match_list env (List.map snd fields1) (List.map snd fields2) is_apply
-  | ty1, ty2 -> filter env ty1 ty2
+      type_match_list env (List.map snd fields1) (List.map snd fields2) 
+  | ty1, ty2 -> filter env ty1 ty2 
 
-and type_match_list env tyl1 tyl2 is_apply = List.iter2 (fun ty1 ty2 -> type_match env ty1 ty2 is_apply) tyl1 tyl2
+and type_match_list env tyl1 tyl2  =
+  List.map2 (type_match env) tyl1 tyl2 |> List.concat
 
-let rec atomic_sig_match env sema_sig1 sema_sig2 is_apply =
+let rec atomic_sig_match env sema_sig1 sema_sig2  =
+  print_endline (show_tyenv sema_sig2);
   match sema_sig2 with
   | (_, AtomSig_value ty') :: ys ->
       let rec aux = function
         | (_, AtomSig_value ty) :: xs -> (
             try
-              type_match env ty ty' is_apply;
+              type_match env ty ty',
               xs
             with _ -> aux xs)
         | _ :: xs -> aux xs
         | [] -> failwith "cannot find value"
       in
-      let xs = aux sema_sig1 in
-      atomic_sig_match env xs ys is_apply
-  | (_, AtomSig_type decl') :: ys ->
+      let l, xs = aux sema_sig1 in
+      l@atomic_sig_match env xs ys 
+  | (name, AtomSig_type decl') :: ys ->
       let rec aux = function
         | (_, AtomSig_type decl) :: xs -> (
             try
               let tyl, ty = type_of_decl' decl
               and tyl', ty' = type_of_decl' decl' in
-              type_match_list env tyl tyl' is_apply;
-              type_match env ty ty' is_apply;
+              type_match_list env tyl tyl' @
+              type_match env ty ty',
               xs
             with _ -> aux xs)
         | _ :: xs -> aux xs
-        | [] -> failwith "cannot find type"
+        | [] ->
+            print_endline name;
+            failwith "cannot find type"
       in
-      let xs = aux sema_sig1 in
-      atomic_sig_match env xs ys is_apply
+      let l,xs = aux sema_sig1 in
+      l@atomic_sig_match env xs ys 
   | (_, AtomSig_module compound_sig') :: ys ->
       let rec aux = function
         | (_, AtomSig_module compound_sig) :: xs -> (
             try
-              compound_sig_match env compound_sig compound_sig' is_apply;
+              compound_sig_match env compound_sig compound_sig' ,
               xs
             with _ -> aux xs)
         | _ :: xs -> aux xs
-        | [] -> failwith "cannot find type"
+        | [] -> failwith "cannot find module"
       in
-      let xs = aux sema_sig1 in
-      atomic_sig_match env xs ys is_apply; atomic_sig_match env xs ys is_apply
-  | _ -> ()
+      let l,xs = aux sema_sig1 in
+      l@atomic_sig_match env xs ys@
+      atomic_sig_match env xs ys 
+  | _ -> []
 
-and compound_sig_match env sema_sig1 sema_sig2 is_apply =
+and compound_sig_match env sema_sig1 sema_sig2  =
   match (sema_sig1, sema_sig2) with
-  | ComSig_struct l1, ComSig_struct l2 -> atomic_sig_match env l1 l2 is_apply
+  | ComSig_struct l1, ComSig_struct l2 -> atomic_sig_match env l1 l2 
   | ComSig_fun (arg1, ret1), ComSig_fun (arg2, ret2) ->
-      atomic_sig_match env [ arg2 ] [ arg1 ] is_apply;
-      compound_sig_match env ret1 ret2 is_apply
+      atomic_sig_match env [ arg2 ] [ arg1 ] @
+      compound_sig_match env ret1 ret2 
   | _ -> failwith "compound signature matching"

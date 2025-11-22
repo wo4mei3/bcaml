@@ -47,8 +47,8 @@ and elaborate_sig_expr env sig_expr =
         | Some decl' ->
             let tyl, ty = type_of_decl' decl
             and tyl', ty' = type_of_decl' decl' in
-            type_match_list env tyl tyl' true;
-            type_match env ty ty' true
+            type_match_list env tyl tyl' |> ignore;
+            type_match env ty ty' |> ignore
         | None -> failwith "elaborate_sig_expr"
       in
       List.iter f l;
@@ -147,9 +147,10 @@ and elaborate_mod_expr env mod_expr =
           (fun (fct_sig, l) (arg_sig, arg_expr) ->
             match fct_sig with
             | ComSig_fun ((name, AtomSig_module param_sig), ret) ->
-                compound_sig_match
-                  ((name, AtomSig_module param_sig) :: env)
-                  arg_sig param_sig true;
+                let ls = compound_sig_match
+                  ((name, AtomSig_module arg_sig) :: env)
+                  arg_sig param_sig in
+                  List.iter (fun ({contents = {link;_}} as x) -> x := {link;abstract=false}) ls; 
                 ( ret,
                   ({ ast = ref (Pvar name); pos = mod_expr.pos }, arg_expr) :: l
                 )
@@ -173,7 +174,7 @@ and elaborate_mod_expr env mod_expr =
       let sema_sig, expr = elaborate_mod_expr env mod_expr in
       let seal_sig = elaborate_sig_expr env sig_expr in
       let save_sig = instantiate_compound seal_sig in
-      compound_sig_match env sema_sig seal_sig false;
+      compound_sig_match env sema_sig seal_sig |> ignore;
       (save_sig, expr)
   | Mstruct l ->
       let l, ctx =
