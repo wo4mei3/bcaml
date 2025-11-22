@@ -147,10 +147,15 @@ and elaborate_mod_expr env mod_expr =
           (fun (fct_sig, l) (arg_sig, arg_expr) ->
             match fct_sig with
             | ComSig_fun ((name, AtomSig_module param_sig), ret) ->
-                let ls = compound_sig_match
-                  ((name, AtomSig_module arg_sig) :: env)
-                  arg_sig param_sig in
-                  List.iter (fun ({contents = {link;_}} as x) -> x := {link;abstract=false}) ls; 
+                let ls =
+                  compound_sig_match
+                    ((name, AtomSig_module arg_sig) :: env)
+                    arg_sig param_sig
+                in
+                List.iter
+                  (fun ({ contents = { link; _ } } as x) ->
+                    x := { link; abstract = false })
+                  ls;
                 ( ret,
                   ({ ast = ref (Pvar name); pos = mod_expr.pos }, arg_expr) :: l
                 )
