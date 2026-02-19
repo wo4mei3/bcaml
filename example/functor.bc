@@ -29,13 +29,14 @@ module Set (Elt: ORDERED_TYPE)=
              | Greater -> member x tl
      end
 
+module A = struct
 module OrderedString =
    struct
      type t = string
      let compare x y = if x = y then Equal else if x < y then Less else Greater
    end
-
-module StringSet = Set(OrderedString)
+end
+module StringSet = Set(A.OrderedString)
 
 let set = (StringSet.add "bar" (StringSet.add "foo" StringSet.empty))
 let _ = StringSet.member "bar" set

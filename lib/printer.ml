@@ -219,7 +219,10 @@ let pp_val expr =
           ^ aux x (n + 1)
           ^ List.fold_left (fun s x -> s ^ "; " ^ aux x (n + 1)) "" xl
           ^ "]"
-      | Eloc l -> "ref " ^ aux (lookuploc l) (n + 1)
+        | Eloc l ->
+          (match lookuploc l with
+           | Ok v -> "ref " ^ aux v (n + 1)
+           | Error _ -> "ref <invalid>")
       | Eunit -> "()"
       | Econstruct (name, { ast = { contents = Etag; _ }; _ }) -> name
       | Econstruct (name, expr) -> name ^ " " ^ aux expr (n + 1)

@@ -60,30 +60,42 @@ let rec elaborate_bind_expr env mod_expr =
       let ty = type_expr env 0 expr in
       let ret = eval expr in
       if_is_repl (fun () ->
-          print_endline ("- : " ^ pp_ty ty ^ " = " ^ pp_val ret));
-      ([ ("_", AtomSig_value ty) ], [ ("_", ret) ])
+        match ret with
+        | Ok v -> print_endline ("- : " ^ pp_ty ty ^ " = " ^ pp_val v)
+        | Error msg -> print_endline ("Error: " ^ msg));
+      ([ ("_", AtomSig_value ty) ], [ ("_", match ret with Ok v -> v | Error msg -> failwith msg) ])
   | Blet l ->
       let add_env = type_let env l in
       let ret = eval_let l in
-      List.iter
-        (fun (name, expr) ->
-          if_is_repl (fun () ->
-              print_endline
-                ("val " ^ name ^ " = " ^ pp_val expr ^ " : "
-                ^ pp_ty (Option.get (find_val name add_env)))))
-        ret;
-      (add_env, ret)
+      (match ret with
+      | Ok ctx ->
+          List.iter
+            (fun (name, expr) ->
+              if_is_repl (fun () ->
+                  print_endline
+                    ("val " ^ name ^ " = " ^ pp_val expr ^ " : "
+                    ^ pp_ty (Option.get (find_val name add_env)))))
+            ctx;
+          (add_env, ctx)
+      | Error msg ->
+          if_is_repl (fun () -> print_endline ("Error: " ^ msg));
+          (add_env, []))
   | Bletrec l ->
       let add_env = type_letrec env l in
       let ret = eval_letrec l in
-      List.iter
-        (fun (name, expr) ->
-          if_is_repl (fun () ->
-              print_endline
-                ("val " ^ name ^ " = " ^ pp_val expr ^ " : "
-                ^ pp_ty (Option.get (find_val name add_env)))))
-        ret;
-      (add_env, ret)
+      (match ret with
+      | Ok ctx ->
+          List.iter
+            (fun (name, expr) ->
+              if_is_repl (fun () ->
+                  print_endline
+                    ("val " ^ name ^ " = " ^ pp_val expr ^ " : "
+                    ^ pp_ty (Option.get (find_val name add_env)))))
+            ctx;
+          (add_env, ctx)
+      | Error msg ->
+          if_is_repl (fun () -> print_endline ("Error: " ^ msg));
+          (add_env, []))
   | Btype decl ->
       let add_env = List.map (fun (n, d) -> (n, AtomSig_type d)) decl in
       check_valid_decl (add_env @ env);
@@ -96,7 +108,9 @@ let rec elaborate_bind_expr env mod_expr =
       let atomic_sig = (name, AtomSig_module compound_sig) in
       if_is_repl (fun () -> print_endline (pp_atomic_sig atomic_sig));
       ( [ atomic_sig ],
-        eval_let [ ({ ast = ref (Pvar name); pos = mod_expr.pos }, expr) ] )
+        match eval_let [ ({ ast = ref (Pvar name); pos = mod_expr.pos }, expr) ] with
+        | Ok ctx -> ctx
+        | Error msg -> if_is_repl (fun () -> print_endline ("Error: " ^ msg)); [] )
   | Bsig (name, sig_expr) ->
       let atomic_sig =
         (name, AtomSig_module (elaborate_sig_expr env sig_expr))
@@ -119,27 +133,39 @@ let rec elaborate_bind_expr env mod_expr =
 and elaborate_mod_expr env mod_expr =
   match mod_expr.ast with
   | Mvar name ->
-      ( access_compound [ name ] (ComSig_struct env),
-        eval { ast = ref (Evar name); pos = mod_expr.pos } )
-  | Maccess (mod_expr, n) -> (
+      let sig_ = access_compound [ name ] (ComSig_struct env) in
+      (sig_,
+        match eval { ast = ref (Evar name); pos = mod_expr.pos } with
+        | Ok v -> v
+        | Error msg ->
+            if_is_repl (fun () -> print_endline ("Error: " ^ msg));
+            { ast = ref Eunit; pos = mod_expr.pos })
+  | Maccess (mod_expr, n) ->
       let l, expr = elaborate_mod_expr env mod_expr in
-      match find_mod n (get_struct l) with
+      (match find_mod n (get_struct l) with
       | Some m ->
-          (m, eval { ast = ref (Erecord_access (expr, n)); pos = mod_expr.pos })
+          (m,
+            match eval { ast = ref (Erecord_access (expr, n)); pos = mod_expr.pos } with
+            | Ok v -> v
+            | Error msg ->
+                if_is_repl (fun () -> print_endline ("Error: " ^ msg));
+                { ast = ref Eunit; pos = mod_expr.pos })
       | None -> failwith "elaborate_mod_expr")
   | Mfunctor ((n, sig_expr), ret) ->
       let arg = elaborate_sig_expr env sig_expr in
-
       let ret, expr = elaborate_mod_expr ((n, AtomSig_module arg) :: env) ret in
       ( ComSig_fun ((n, AtomSig_module arg), ret),
-        eval
-          {
-            ast =
-              ref
-                (Efunction
-                   [ ({ ast = ref (Pvar n); pos = sig_expr.pos }, expr) ]);
-            pos = mod_expr.pos;
-          } )
+        match eval {
+          ast =
+            ref
+              (Efunction
+                 [ ({ ast = ref (Pvar n); pos = sig_expr.pos }, expr) ]);
+          pos = mod_expr.pos;
+        } with
+        | Ok v -> v
+        | Error msg ->
+            if_is_repl (fun () -> print_endline ("Error: " ^ msg));
+            { ast = ref Eunit; pos = mod_expr.pos })
   | Mapply (fct, args) ->
       let fct_sig, fct = elaborate_mod_expr env fct in
       let compound_sig, pat_exprs =
@@ -164,9 +190,11 @@ and elaborate_mod_expr env mod_expr =
           (List.map (fun arg -> elaborate_mod_expr env arg) args)
       in
       let args = List.map (fun arg -> snd (elaborate_mod_expr env arg)) args in
-      ctx := eval_let pat_exprs @ !ctx;
+      (match eval_let pat_exprs with
+      | Ok ctx' -> ctx := ctx' @ !ctx
+      | Error msg -> if_is_repl (fun () -> print_endline ("Error: " ^ msg)));
       ( compound_sig,
-        eval
+        match eval
           {
             ast =
               ref
@@ -174,7 +202,11 @@ and elaborate_mod_expr env mod_expr =
                    ( pat_exprs,
                      { ast = ref (Eapply (fct, args)); pos = mod_expr.pos } ));
             pos = mod_expr.pos;
-          } )
+          } with
+        | Ok v -> v
+        | Error msg ->
+            if_is_repl (fun () -> print_endline ("Error: " ^ msg));
+            { ast = ref Eunit; pos = mod_expr.pos })
   | Mseal (mod_expr, sig_expr) ->
       let sema_sig, expr = elaborate_mod_expr env mod_expr in
       let seal_sig = elaborate_sig_expr env sig_expr in
