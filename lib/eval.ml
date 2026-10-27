@@ -248,6 +248,7 @@ let rec collect_pvars pat =
   aux []
 
 let rec subst_to_expr expr l =
+  let pos = expr.pos in
   let conv_pat pat table =
     List.fold_left
       (fun pat (name, alpha) -> subst_to_pat pat [ (name, ref (Pvar alpha)) ])
@@ -325,7 +326,16 @@ let rec subst_to_expr expr l =
     | Erecord_access (e, lbl) -> ref (Erecord_access (subst_to_expr e l, lbl))
     | Ewhen (lhs, rhs) -> ref (Ewhen (subst_to_expr lhs l, subst_to_expr rhs l))
     | EBlock1 expr -> ref (EBlock1 (subst_to_expr expr l))
-    | Epath _ -> expr
+    | Epath (root :: path, name) ->
+        let base = { ast = ref (Evar root); pos } in
+        let base =
+          List.fold_left
+            (fun base label ->
+              { ast = ref (Erecord_access (base, label)); pos })
+            base path
+        in
+        (subst_to_expr { ast = ref (Erecord_access (base, name)); pos } l).ast
+    | Epath ([], _) -> expr
   in
   { ast = List.fold_left aux expr.ast l; pos = expr.pos }
 
@@ -401,7 +411,9 @@ and do_matches pat_exprs expr' =
 
 and eval1 expr =
   match !(expr.ast) with
-  | Evar name -> lookupcontext name
+  | Evar name -> (
+      try lookupcontext name
+      with Not_found -> raise (InterpreterError ("unbound variable: " ^ name)))
   | Etuple l when not (List.exists (fun x -> isval x) l) ->
       { ast = ref (Etuple (List.map eval1 l)); pos = expr.pos }
   | Enil -> { ast = ref (Elist []); pos = expr.pos }
@@ -521,8 +533,10 @@ and eval1 expr =
       }
   | Erecord_access (expr, label) when not (isval expr) ->
       { ast = ref (Erecord_access (eval1 expr, label)); pos = expr.pos }
-  | Erecord_access ({ ast = { contents = Erecord fields }; _ }, label) ->
-      List.assoc label fields
+  | Erecord_access ({ ast = { contents = Erecord fields }; _ }, label) -> (
+      try List.assoc label fields
+      with Not_found ->
+        raise (InterpreterError ("missing module field: " ^ label)))
   | EBlock1 expr -> expr
   | Epath (s :: l, name) ->
       let expr =

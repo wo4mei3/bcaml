@@ -288,8 +288,8 @@ let rec unify env ty1 ty2 =
         failwith
           (Printf.sprintf "Cannot unify types between %s and %s" (pp_ty ty1)
              (pp_ty ty2)))
-  | Tvar { contents = { link = Linkto t1; abstract = false } }, t2
-  | t1, Tvar { contents = { link = Linkto t2; abstract = false } } ->
+  | Tvar { contents = { link = Linkto t1; _ } }, t2
+  | t1, Tvar { contents = { link = Linkto t2; _ } } ->
       unify env t1 t2
   | ( Tvar
         ({ contents = { link = Unbound { id; level }; abstract = false } } as

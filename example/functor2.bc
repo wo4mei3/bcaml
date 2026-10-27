@@ -13,6 +13,8 @@ module IntShow : SHOW with type t = int = struct
   let show x = string_of_int x 
 end
 
+let () = printf "functor2 loaded\n"
+
 module IntOrd : ORD with type t = int = struct
   type t = int
   let compare x y = x - y
@@ -36,8 +38,18 @@ end
 
 
 module MakePOFFunctor
-  (F:functor (S:SHOW) -> functor (O:ORD) -> PRINTABLE_ORDERED)
-  (S1:SHOW)
-  (O2:ORD)
-  : PRINTABLE_ORDERED
+  (F:functor (S:SHOW with type t = int) ->
+     functor (O:ORD with type t = int) ->
+       PRINTABLE_ORDERED with type t = int)
+  (S1:SHOW with type t = int)
+  (O2:ORD with type t = int)
+  : PRINTABLE_ORDERED with type t = int
   = F S1 O2
+
+module PrintableInt =
+  MakePOFFunctor MakePrintableOrderd IntShow IntOrd
+
+let () =
+  printf "%s %d\n"
+    (PrintableInt.show 42)
+    (PrintableInt.compare 10 3)
