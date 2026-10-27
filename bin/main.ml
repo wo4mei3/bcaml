@@ -64,15 +64,16 @@ let rec elaborate_bind_expr env mod_expr =
       ([ ("_", AtomSig_value ty) ], [ ("_", ret) ])
   | Blet l ->
       let add_env = type_let env l in
-      let ret = eval_let l in
+      (*let ret = eval_let l in
       List.iter
         (fun (name, expr) ->
           if_is_repl (fun () ->
               print_endline
                 ("val " ^ name ^ " = " ^ pp_val expr ^ " : "
                 ^ pp_ty (Option.get (find_val name add_env)))))
-        ret;
-      (add_env, ret)
+        ret;*)
+        let ret =  { ast = ref Eunit;pos=(Lexing.dummy_pos, Lexing.dummy_pos)} in
+      (add_env,  [ ("_", ret) ])
   | Bletrec l ->
       let add_env = type_letrec env l in
       let ret = eval_letrec l in
@@ -120,7 +121,7 @@ and elaborate_mod_expr env mod_expr =
   match mod_expr.ast with
   | Mvar name ->
       ( access_compound [ name ] (ComSig_struct env),
-        eval { ast = ref (Evar name); pos = mod_expr.pos } )
+        (*eval*) { ast = ref (Evar name); pos = mod_expr.pos } )
   | Maccess (mod_expr, n) -> (
       let l, expr = elaborate_mod_expr env mod_expr in
       match find_mod n (get_struct l) with
@@ -129,10 +130,9 @@ and elaborate_mod_expr env mod_expr =
       | None -> failwith "elaborate_mod_expr")
   | Mfunctor ((n, sig_expr), ret) ->
       let arg = elaborate_sig_expr env sig_expr in
-
       let ret, expr = elaborate_mod_expr ((n, AtomSig_module arg) :: env) ret in
       ( ComSig_fun ((n, AtomSig_module arg), ret),
-        eval
+        (*eval*)
           {
             ast =
               ref
@@ -164,9 +164,9 @@ and elaborate_mod_expr env mod_expr =
           (List.map (fun arg -> elaborate_mod_expr env arg) args)
       in
       let args = List.map (fun arg -> snd (elaborate_mod_expr env arg)) args in
-      ctx := eval_let pat_exprs @ !ctx;
+      (*ctx := eval_let pat_exprs @ !ctx;*)
       ( compound_sig,
-        eval
+        (*eval*)
           {
             ast =
               ref
